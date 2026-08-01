@@ -58,7 +58,11 @@ export class FoamSplats {
     this.splatScene = new THREE.Scene();
     const half = MAP_SIZE / 2;
     this.ortho = new THREE.OrthographicCamera(-half, half, half, -half, 0.1, 100);
+    // explicit top-down basis: +u = world +x, +v = world -z
+    // (matches the ocean shader's foam UV mapping; a naive lookAt straight
+    // down has a degenerate up vector and mirrors the map)
     this.ortho.position.set(0, 50, 0);
+    this.ortho.up.set(0, 0, -1);
     this.ortho.lookAt(0, 0, 0);
     this.splatScene.add(this.ortho);
 
@@ -129,6 +133,8 @@ export class FoamSplats {
     const cz = Math.round(camera.position.z / texel) * texel;
     this.center.set(cx, cz);
     this.ortho.position.set(cx, 50, cz);
+    this.ortho.up.set(0, 0, -1);
+    this.ortho.lookAt(cx, 0, cz);
     this.ortho.updateMatrixWorld();
 
     let count = 0;

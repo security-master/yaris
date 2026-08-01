@@ -10,6 +10,8 @@ import { Input } from "./Input";
 import { ChaseCamera } from "../camera/ChaseCamera";
 import { Boat } from "../boats/Boat";
 import { FoamSplats } from "../water/FoamSplats";
+import { Course } from "../race/Course";
+import { RaceManager } from "../race/RaceManager";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
 import { OUTLINE_RESOLUTION } from "../render/Outline";
@@ -29,6 +31,8 @@ export class Game {
   readonly sky: Sky;
   readonly foam: FoamSplats;
   readonly boats: Boat[] = [];
+  readonly course: Course;
+  readonly race: RaceManager;
   private post!: PostPipeline;
   player!: Boat;
 
@@ -61,10 +65,34 @@ export class Game {
     this.foam = new FoamSplats();
     this.ocean.setFoamMap(this.foam.texture, this.foam.center, this.foam.size);
 
-    // player boat (AI boats arrive in milestone 5)
-    this.player = new Boat(this.scene, Palette.liveries[0], 0, true, 0, 0, 0);
-    this.boats.push(this.player);
-    enableEdgeLines(this.player.group);
+    this.course = new Course(this.scene);
+    this.race = new RaceManager(this.course);
+
+    // grid: staggered pairs behind the start line (player in front row)
+    const gridSlots = [8, 14, 20, 26]; // metres behind the line
+    const lateral = [3.2, -3.2, 3.2, -3.2];
+    for (let i = 0; i < 1; i++) {
+      const back = gridSlots[i] / this.course.length;
+      const t = (1 + this.course.startParam - back) % 1;
+      const p = this.course.curve.getPointAt(t);
+      const tan = this.course.curve.getTangentAt(t);
+      const yaw = Math.atan2(tan.x, tan.z);
+      const sideX = -tan.z * lateral[i];
+      const sideZ = tan.x * lateral[i];
+      const boat = new Boat(
+        this.scene,
+        Palette.liveries[i],
+        i,
+        i === 0,
+        p.x + sideX,
+        p.z + sideZ,
+        yaw
+      );
+      this.boats.push(boat);
+      enableEdgeLines(boat.group);
+      this.race.addBoat(boat);
+    }
+    this.player = this.boats[0];
 
     this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
 
@@ -118,6 +146,7 @@ export class Game {
       this.countdown = 0;
       this.chase.mode = "chase";
       this.chase.snapBehind(this.chaseTarget());
+      if (!this.race.running) this.race.start();
     } else if (name === "countdown") {
       this.countdown = COUNTDOWN_TIME;
       this.chase.mode = "orbit";
@@ -137,6 +166,7 @@ export class Game {
           this.state = "racing";
           this.chase.mode = "chase";
           this.chase.snapBehind(this.chaseTarget());
+          this.race.start();
         }
         break;
       }
@@ -146,6 +176,11 @@ export class Game {
         pc.brake = this.input.brake;
         pc.steer = this.input.steer;
         pc.drift = this.input.drift;
+        this.race.update(dt);
+        if (this.race.playerFinished) {
+          this.state = "finished";
+          this.chase.mode = "finish";
+        }
         break;
       }
       case "finished":
@@ -172,6 +207,7 @@ export class Game {
     this.chase.update(dt, this.time, this.chaseTarget());
     this.ocean.update(this.time, this.chase.camera);
     this.sky.update(this.time, this.chase.camera);
+    this.course.update(this.time, this.chase.camera);
   }
 
   render(): void {

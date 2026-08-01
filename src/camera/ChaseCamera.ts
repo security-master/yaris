@@ -58,8 +58,8 @@ export class ChaseCamera {
     if (this.mode === "orbit" || this.mode === "finish") {
       // cinematic orbit around the boat
       this.orbitAngle += dt * (this.mode === "orbit" ? 0.22 : 0.16);
-      const r = this.mode === "orbit" ? 13 : 16;
-      const h = this.mode === "orbit" ? 4.2 : 5.5;
+      const r = this.mode === "orbit" ? 15 : 17;
+      const h = this.mode === "orbit" ? 5.2 : 6.0;
       _desired.set(
         target.position.x + Math.cos(this.orbitAngle) * r,
         target.position.y + h,

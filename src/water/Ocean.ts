@@ -170,7 +170,8 @@ export class Ocean {
           // --------------------------------------------------------------
           // 3. World-space foam splat map (wakes, hull rings, landings).
           // --------------------------------------------------------------
-          vec2 fUv = (vWorldPos.xz - uFoamCenter) / uFoamSize + 0.5;
+          // +u = world +x, +v = world -z (see FoamSplats ortho basis)
+          vec2 fUv = vec2(vWorldPos.x - uFoamCenter.x, uFoamCenter.y - vWorldPos.z) / uFoamSize + 0.5;
           float splat = 0.0;
           if (fUv.x > 0.001 && fUv.x < 0.999 && fUv.y > 0.001 && fUv.y < 0.999) {
             float edge = smoothstep(0.0, 0.06, fUv.x) * smoothstep(1.0, 0.94, fUv.x)
