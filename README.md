@@ -8,6 +8,10 @@ synthesized live with the Web Audio API.
 
 ![stack](https://img.shields.io/badge/stack-Vite%20%2B%20Three.js%20%2B%20TypeScript-blue)
 
+## Live
+
+Deployed on Vercel from the `main` branch.
+
 ## Play
 
 ```bash
