@@ -13,8 +13,8 @@ function makeRampTexture(): THREE.CanvasTexture {
   c.width = 4;
   c.height = 1;
   const ctx = c.getContext('2d')!;
-  // Tuned band thresholds via pixel positions — shadow / mid / lit / rim-lit
-  const bands = ['#2a2030', '#6a4a3a', '#c89060', '#ffe8c0'];
+  // Cool shadow -> clean cream highlight. These are light multipliers, not albedo.
+  const bands = ['#3a4368', '#7482a0', '#e4d38f', '#fff2bf'];
   bands.forEach((col, i) => {
     ctx.fillStyle = col;
     ctx.fillRect(i, 0, 1, 1);
@@ -107,8 +107,8 @@ void main() {
   vec3 v = normalize(cameraPosition - vWorldPos);
 
   float ndl = dot(n, l) * 0.5 + 0.5;
-  // Quantize into ramp — bias shifts band thresholds by eye
-  float rampU = clamp(ndl * uBandBias, 0.001, 0.999);
+  // Quantize into ramp — the lift keeps low bandBias callsites saturated instead of muddy.
+  float rampU = clamp(ndl * uBandBias + 0.08 + max(1.0 - uBandBias, 0.0) * 0.22, 0.001, 0.999);
   vec3 ramp = texture2D(uRamp, vec2(rampU, 0.5)).rgb;
 
   // Fake environment via matcap (view-space normal)
@@ -116,7 +116,10 @@ void main() {
   vec2 muv = vn.xy * 0.5 + 0.5;
   vec3 matc = texture2D(uMatcap, muv).rgb;
 
-  vec3 base = uColor * ramp * uShadeMul;
+  float shade = dot(ramp, vec3(0.299, 0.587, 0.114));
+  vec3 celBase = uColor * (0.34 + shade * 0.92);
+  vec3 tint = mix(vec3(shade), ramp, 0.38);
+  vec3 base = celBase * tint * uShadeMul;
   base = mix(base, base * matc * 1.35, uMatcapMix);
 
   // Banded specular — hard edge, anime glitter shape
@@ -131,7 +134,7 @@ void main() {
 
   // Accent stripe via UV (hulls paint accent on upper deck UVs)
   float accentMask = smoothstep(0.72, 0.78, vUv.y) * (1.0 - smoothstep(0.92, 0.98, vUv.y));
-  base = mix(base, uAccent * ramp, accentMask * 0.65);
+  base = mix(base, uAccent * (0.55 + ramp * 0.55), accentMask * 0.65);
 
   gl_FragColor = vec4(base, 1.0);
 }
@@ -158,8 +161,8 @@ export function createCelMaterial(opts: CelMaterialOptions): THREE.ShaderMateria
       uRimColor: { value: new THREE.Color(opts.rimColor ?? 0xffe0a8) },
       uRimPower: { value: opts.rimPower ?? 2.8 },
       uMatcapMix: { value: opts.matcapMix ?? 0.22 },
-      uBandBias: { value: opts.bandBias ?? 0.95 },
-      uShadeMul: { value: opts.shadeMul ?? 1.05 },
+      uBandBias: { value: opts.bandBias ?? 1.05 },
+      uShadeMul: { value: opts.shadeMul ?? 1.12 },
     },
     vertexShader: celVert,
     fragmentShader: celFrag,

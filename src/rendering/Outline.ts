@@ -35,7 +35,8 @@ export function createOutlineMaterial(width = 1.0, ink: THREE.ColorRepresentatio
     vertexShader: outlineVert,
     fragmentShader: outlineFrag,
     side: THREE.BackSide,
-    depthWrite: true,
+    depthWrite: false,
+    depthTest: true,
   });
 }
 

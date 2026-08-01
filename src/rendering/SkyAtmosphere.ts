@@ -7,7 +7,8 @@ import { Palette } from '../palette';
 const skyVert = /* glsl */ `
 varying vec3 vDir;
 void main() {
-  vec4 world = modelMatrix * vec4(position, 1.0);
+  // Anchor in the shader so the dome cannot lag behind chase/bow cameras.
+  vec4 world = vec4(cameraPosition + position, 1.0);
   vDir = normalize(position);
   gl_Position = projectionMatrix * viewMatrix * world;
   gl_Position.z = gl_Position.w; // push to far plane
@@ -18,22 +19,72 @@ const skyFrag = /* glsl */ `
 uniform vec3 uZenith;
 uniform vec3 uHorizon;
 uniform vec3 uGlow;
+uniform vec3 uCloudLit;
+uniform vec3 uCloudShade;
+uniform vec3 uCloudRim;
 uniform vec3 uSunDir;
 uniform float uTime;
 varying vec3 vDir;
 
-// Cheap hash for cloud blobs
-float hash(vec2 p) {
+float hash12(vec2 p) {
   return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
 }
 
-float cloudField(vec2 p) {
-  // Flat cel cloud shapes — hard edges via step
-  float n = 0.0;
-  n += step(0.62, hash(floor(p * 2.0)));
-  n += step(0.7, hash(floor(p * 3.5 + 10.0))) * 0.6;
-  n += step(0.75, hash(floor(p * 5.0 - 4.0))) * 0.35;
-  return clamp(n, 0.0, 1.0);
+vec2 hash22(vec2 p) {
+  return fract(sin(vec2(dot(p, vec2(269.5, 183.3)), dot(p, vec2(113.5, 271.9)))) * 43758.5453);
+}
+
+float ellipse(vec2 p, vec2 radius) {
+  vec2 q = p / radius;
+  return 1.0 - dot(q, q);
+}
+
+float cloudBlob(vec2 p) {
+  vec2 cell = floor(p);
+  float field = -1.0;
+
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 id = cell + vec2(float(x), float(y));
+      float seed = hash12(id);
+      float active = 1.0;
+      vec2 center = id + vec2(0.5) + (hash22(id) - 0.5) * vec2(0.55, 0.35);
+      vec2 q = p - center;
+      float s = mix(0.9, 1.45, hash12(id + 17.0));
+
+      float blob = ellipse(q, vec2(0.66, 0.3) * s);
+      blob = max(blob, ellipse(q - vec2(-0.34, 0.02) * s, vec2(0.38, 0.25) * s));
+      blob = max(blob, ellipse(q - vec2(0.3, 0.04) * s, vec2(0.46, 0.28) * s));
+      blob = max(blob, ellipse(q - vec2(0.0, 0.2) * s, vec2(0.4, 0.3) * s));
+      field = max(field, mix(-1.0, blob, active));
+    }
+  }
+
+  return field;
+}
+
+float wrappedAzimuthDelta(float a, float b) {
+  return abs(fract(a - b + 0.5) - 0.5);
+}
+
+float horizonClouds(vec3 dir) {
+  float az = atan(dir.z, dir.x) / 6.2831853;
+  float field = -1.0;
+
+  for (int i = 0; i < 7; i++) {
+    float fi = float(i);
+    float center = fract(fi * 0.173 + hash12(vec2(fi, 4.0)) * 0.18);
+    float y = mix(-0.24, 0.18, hash12(vec2(fi, 9.0)));
+    float width = mix(0.42, 0.72, hash12(vec2(fi, 13.0)));
+    float height = mix(0.13, 0.24, hash12(vec2(fi, 21.0)));
+    vec2 q = vec2(wrappedAzimuthDelta(az, center), dir.y - y);
+    float main = ellipse(q, vec2(width, height));
+    main = max(main, ellipse(q - vec2(-width * 0.24, height * 0.18), vec2(width * 0.42, height * 0.9)));
+    main = max(main, ellipse(q - vec2(width * 0.28, height * 0.1), vec2(width * 0.48, height * 0.82)));
+    field = max(field, main);
+  }
+
+  return field;
 }
 
 void main() {
@@ -46,28 +97,32 @@ void main() {
   else if (band > 0.42) col = mix(uHorizon, uZenith, 0.55);
   else col = mix(uGlow, uHorizon, clamp((band - 0.15) / 0.27, 0.0, 1.0));
 
-  // Sun disc + graphic flare (not photographic bloom)
-  float sun = max(dot(dir, normalize(uSunDir)), 0.0);
-  float disc = step(0.9985, sun);
-  float halo = step(0.992, sun) * 0.55 + step(0.97, sun) * 0.25;
-  // Cross flare
   vec3 sd = normalize(uSunDir);
-  float cross = 0.0;
-  cross += smoothstep(0.02, 0.0, abs(dir.x - sd.x)) * step(0.85, sun) * 0.35;
-  cross += smoothstep(0.02, 0.0, abs(dir.y - sd.y)) * step(0.85, sun) * 0.25;
-  col += vec3(1.0, 0.95, 0.7) * (disc + halo * 0.8 + cross);
+  float sun = max(dot(dir, sd), 0.0);
+  vec3 sunRight = normalize(cross(vec3(0.0, 1.0, 0.0), sd));
+  vec3 sunUp = normalize(cross(sd, sunRight));
+  vec2 suv = vec2(dot(dir, sunRight), dot(dir, sunUp));
+  float sr = length(suv);
+  float disc = step(sr, 0.038);
+  float ring = step(sr, 0.074) - step(sr, 0.048);
+  float diamond = step(abs(suv.x) + abs(suv.y), 0.115) * (1.0 - step(sr, 0.043));
+  float crossFlare = (1.0 - smoothstep(0.0, 0.013, abs(suv.x))) * (1.0 - smoothstep(0.03, 0.32, abs(suv.y)));
+  crossFlare += (1.0 - smoothstep(0.0, 0.013, abs(suv.y))) * (1.0 - smoothstep(0.03, 0.26, abs(suv.x)));
+  float halo = (1.0 - smoothstep(0.04, 0.32, sr)) * 0.34;
+  col += vec3(1.0, 0.9, 0.43) * (disc * 1.6 + ring * 0.85 + diamond * 0.32 + crossFlare * 0.78 + halo * step(0.82, sun));
 
   // Cel clouds drifting
-  if (dir.y > 0.08) {
-    vec2 cp = dir.xz / max(dir.y, 0.15);
-    cp.x += uTime * 0.012;
-    float c = cloudField(cp * 0.55);
-    // Hard rim edge on clouds
-    float rim = cloudField(cp * 0.55 + 0.04) - c;
-    vec3 cloudCol = mix(vec3(0.77, 0.85, 0.94), vec3(1.0, 0.97, 0.94), c);
-    cloudCol += vec3(1.0) * step(0.15, rim) * 0.35;
-    col = mix(col, cloudCol, c * step(0.12, dir.y) * 0.85);
-  }
+  vec2 cp = dir.xz / max(dir.y, 0.15);
+  cp = cp * vec2(0.82, 0.52) + vec2(uTime * 0.018, 0.35);
+  float blob = max(max(cloudBlob(cp), cloudBlob(cp * 0.58 + vec2(3.2, -1.7))), horizonClouds(dir));
+  float aa = 0.018;
+  float fill = smoothstep(-aa, aa, blob);
+  float rim = smoothstep(-0.11 - aa, -0.11 + aa, blob) * (1.0 - smoothstep(-aa, aa, blob));
+  float underside = 1.0 - smoothstep(-0.18, 0.28, fract(cp.y * 0.5) - 0.25);
+  float cloudFade = smoothstep(-0.65, -0.2, dir.y) * (1.0 - smoothstep(0.78, 0.95, dir.y));
+  vec3 cloudCol = mix(uCloudLit, uCloudShade, underside * 0.34);
+  cloudCol = mix(cloudCol, uCloudRim, rim * 0.75);
+  col = mix(col, cloudCol, (fill * 0.88 + rim * 0.7) * cloudFade);
 
   gl_FragColor = vec4(col, 1.0);
 }
@@ -79,11 +134,17 @@ export class SkyAtmosphere {
   private sunDir = new THREE.Vector3(0.45, 0.72, 0.4).normalize();
 
   constructor() {
+    this.group.userData.skipEdge = true;
+    this.group.name = 'SkyAtmosphere';
+
     this.skyMat = new THREE.ShaderMaterial({
       uniforms: {
         uZenith: { value: new THREE.Color(Palette.skyZenith) },
         uHorizon: { value: new THREE.Color(Palette.skyHorizon) },
         uGlow: { value: new THREE.Color(Palette.skyGlow) },
+        uCloudLit: { value: new THREE.Color(Palette.cloudLit) },
+        uCloudShade: { value: new THREE.Color(Palette.cloudShade) },
+        uCloudRim: { value: new THREE.Color(Palette.cloudRim) },
         uSunDir: { value: this.sunDir.clone() },
         uTime: { value: 0 },
       },
@@ -91,37 +152,52 @@ export class SkyAtmosphere {
       fragmentShader: skyFrag,
       side: THREE.BackSide,
       depthWrite: false,
+      depthTest: false,
     });
     const dome = new THREE.Mesh(new THREE.SphereGeometry(800, 32, 16), this.skyMat);
     dome.frustumCulled = false;
+    dome.renderOrder = -10000;
+    dome.userData.skipEdge = true;
     this.group.add(dome);
 
     // Hard graphic sun billboard disc for extra pop
-    const sunGeo = new THREE.CircleGeometry(18, 24);
-    const sunMat = new THREE.MeshBasicMaterial({
-      color: Palette.sunCore,
+    const sunMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uCore: { value: new THREE.Color(Palette.sunCore) },
+        uRim: { value: new THREE.Color(Palette.sunRim) },
+      },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv * 2.0 - 1.0;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uCore;
+        uniform vec3 uRim;
+        varying vec2 vUv;
+        void main() {
+          float r = length(vUv);
+          float disc = step(r, 0.28);
+          float ring = step(r, 0.48) - step(r, 0.34);
+          float diamond = step(abs(vUv.x) + abs(vUv.y), 0.82) * (1.0 - step(r, 0.32));
+          float rays = (1.0 - smoothstep(0.0, 0.035, abs(vUv.x))) * (1.0 - smoothstep(0.18, 1.0, abs(vUv.y)));
+          rays += (1.0 - smoothstep(0.0, 0.035, abs(vUv.y))) * (1.0 - smoothstep(0.18, 1.0, abs(vUv.x)));
+          float alpha = max(max(disc, ring * 0.86), max(diamond * 0.42, rays * 0.62));
+          vec3 color = mix(uRim, uCore, disc);
+          gl_FragColor = vec4(color, alpha);
+        }
+      `,
       transparent: true,
-      opacity: 0.95,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    const sun = new THREE.Mesh(sunGeo, sunMat);
+    const sun = new THREE.Mesh(new THREE.PlaneGeometry(58, 58), sunMat);
     sun.position.copy(this.sunDir).multiplyScalar(420);
     sun.lookAt(0, 0, 0);
+    sun.userData.skipEdge = true;
     this.group.add(sun);
-
-    const flareGeo = new THREE.CircleGeometry(42, 24);
-    const flareMat = new THREE.MeshBasicMaterial({
-      color: Palette.sunRim,
-      transparent: true,
-      opacity: 0.28,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const flare = new THREE.Mesh(flareGeo, flareMat);
-    flare.position.copy(this.sunDir).multiplyScalar(418);
-    flare.lookAt(0, 0, 0);
-    this.group.add(flare);
   }
 
   update(t: number, camera: THREE.Camera): void {

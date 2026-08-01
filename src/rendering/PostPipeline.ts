@@ -38,9 +38,9 @@ const sobelShader = {
     uResolution: { value: new THREE.Vector2(1, 1) },
     uInk: { value: new THREE.Color(Palette.ink) },
     uEdgeStrength: { value: 1.15 },
-    uDepthStrength: { value: 0.85 },
-    uNormalStrength: { value: 1.0 },
-    uThreshold: { value: 0.12 },
+    uDepthStrength: { value: 0.42 },
+    uNormalStrength: { value: 0.88 },
+    uThreshold: { value: 0.22 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -74,6 +74,9 @@ const sobelShader = {
       vec4 n7 = texture2D(tNormalDepth, vUv + vec2(0.0, texel.y));
       vec4 n8 = texture2D(tNormalDepth, vUv + vec2(texel.x, texel.y));
 
+      float minDepth = min(center.a, min(min(min(n1.a, n2.a), min(n3.a, n4.a)), min(min(n5.a, n6.a), min(n7.a, n8.a))));
+      float objectInterior = step(0.0001, minDepth);
+
       // Sobel on normals
       vec3 nx = -n1.rgb - 2.0*n4.rgb - n6.rgb + n3.rgb + 2.0*n5.rgb + n8.rgb;
       vec3 ny = -n1.rgb - 2.0*n2.rgb - n3.rgb + n6.rgb + 2.0*n7.rgb + n8.rgb;
@@ -84,11 +87,11 @@ const sobelShader = {
       float dy = -n1.a - 2.0*n2.a - n3.a + n6.a + 2.0*n7.a + n8.a;
       float dEdge = abs(dx) + abs(dy);
 
-      float edge = nEdge * uNormalStrength + dEdge * uDepthStrength * 8.0;
+      float edge = nEdge * uNormalStrength + dEdge * uDepthStrength * 4.0;
       // Hard threshold — graphic ink, avoid mushy AA outlines
-      float line = step(uThreshold, edge) * uEdgeStrength;
+      float line = step(uThreshold, edge) * uEdgeStrength * objectInterior;
       // Suppress very strong silhouette edges (hull outlines own those)
-      line *= 1.0 - smoothstep(0.35, 0.7, dEdge * 10.0) * 0.65;
+      line *= 1.0 - smoothstep(0.025, 0.08, dEdge) * 0.9;
 
       vec4 color = texture2D(tDiffuse, vUv);
       color.rgb = mix(color.rgb, uInk, clamp(line, 0.0, 0.85));
@@ -158,25 +161,35 @@ export class PostPipeline {
   }
 
   private renderNormalDepth(): void {
-    // Override materials on race objects only (skip water/sky for cleaner interior lines)
+    // Override materials on cel race objects only; everything else must not feed Sobel.
     const prev = this.renderer.getRenderTarget();
     const prevBg = this.scene.background;
-    this.scene.background = new THREE.Color(0x000000);
+    const prevClear = new THREE.Color();
+    this.renderer.getClearColor(prevClear);
+    const prevClearAlpha = this.renderer.getClearAlpha();
+    this.scene.background = null;
+    this.renderer.setClearColor(0x8080ff, 0);
 
     const overrides: { obj: THREE.Mesh; mat: THREE.Material | THREE.Material[] }[] = [];
     const hide: THREE.Object3D[] = [];
 
     this.scene.traverse((obj) => {
-      if (obj.name === 'Ocean' || obj.userData?.skipEdge) {
+      if (obj.userData?.skipEdge || obj.name === 'Ocean') {
         if (obj.visible) {
           hide.push(obj);
           obj.visible = false;
         }
+        return;
       }
-      if ((obj as THREE.Mesh).isMesh && obj.userData?.celShaded) {
-        const mesh = obj as THREE.Mesh;
-        overrides.push({ obj: mesh, mat: mesh.material });
-        mesh.material = this.ndMaterial;
+      const mesh = obj as THREE.Mesh;
+      if (mesh.isMesh) {
+        if (mesh.userData?.celShaded && !mesh.userData?.isOutline) {
+          overrides.push({ obj: mesh, mat: mesh.material });
+          mesh.material = this.ndMaterial;
+        } else if (mesh.visible) {
+          hide.push(mesh);
+          mesh.visible = false;
+        }
       }
     });
 
@@ -187,6 +200,7 @@ export class PostPipeline {
     for (const h of hide) h.visible = true;
     for (const o of overrides) o.obj.material = o.mat;
     this.scene.background = prevBg;
+    this.renderer.setClearColor(prevClear, prevClearAlpha);
     this.renderer.setRenderTarget(prev);
   }
 
