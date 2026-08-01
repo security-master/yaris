@@ -10,7 +10,7 @@ export class RacingLine {
   private positions: Float32Array;
   private curve: THREE.CatmullRomCurve3;
   private samples: number;
-  private halfWidth = 1.1;
+  private halfWidth = 0.55;
 
   constructor(curve: THREE.CatmullRomCurve3, samples = 280) {
     this.curve = curve;
@@ -62,12 +62,12 @@ export class RacingLine {
         varying vec2 vUv;
         void main() {
           float edge = abs(vUv.y - 0.5) * 2.0;
-          float core = 1.0 - smoothstep(0.15, 0.55, edge);
+          float core = 1.0 - smoothstep(0.18, 0.62, edge);
           // Hard cel bands
-          float band = step(0.35, core) * 0.55 + step(0.7, core);
-          float pulse = step(0.5, fract(vUv.x * 40.0 - uTime * 2.0));
-          vec3 col = mix(uColor, uGlow, pulse * 0.5);
-          float alpha = band * 0.85;
+          float band = step(0.42, core) * 0.45 + step(0.78, core) * 0.55;
+          float pulse = step(0.58, fract(vUv.x * 32.0 - uTime * 1.55));
+          vec3 col = mix(uColor, uGlow, pulse * 0.28);
+          float alpha = band * 0.42;
           if (alpha < 0.05) discard;
           gl_FragColor = vec4(col, alpha);
         }

@@ -32,34 +32,69 @@ export class GateField {
 
   private makeGate(index: number): THREE.Group {
     const g = new THREE.Group();
-    const mat = createCelMaterial({
+    const postMat = createCelMaterial({
       color: Palette.gate,
       accent: Palette.racingLineGlow,
-      rimColor: 0xc0ffe0,
-      matcapMix: 0.25,
+      rimColor: 0xd8ffe9,
+      matcapMix: 0.22,
+      bandBias: 1.0,
     });
-    const postGeo = new THREE.BoxGeometry(0.45, 6, 0.45);
+    const beamMat = createCelMaterial({
+      color: Palette.racingLineGlow,
+      accent: Palette.white,
+      rimColor: 0xffffff,
+      matcapMix: 0.18,
+      bandBias: 1.12,
+      shadeMul: 1.22,
+    });
+    const baseMat = createCelMaterial({
+      color: Palette.hudAccent,
+      accent: Palette.gate,
+      rimColor: 0xfff1a8,
+      matcapMix: 0.26,
+    });
+
+    const postGeo = new THREE.CylinderGeometry(0.22, 0.5, 5.55, 4, 1);
+    const baseGeo = new THREE.CylinderGeometry(0.82, 1.05, 0.42, 8, 1);
+    const baseStripeGeo = new THREE.BoxGeometry(0.32, 0.26, 1.45);
     for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(postGeo, mat);
-      post.position.set(0, 3, side * 5);
+      const post = new THREE.Mesh(postGeo, postMat);
+      post.position.set(0, 2.95, side * 4.65);
+      post.rotation.y = Math.PI / 4;
       post.userData.celShaded = true;
       g.add(post);
+
+      const base = new THREE.Mesh(baseGeo, baseMat);
+      base.position.set(0, 0.24, side * 4.75);
+      base.userData.celShaded = true;
+      g.add(base);
+
+      const baseStripe = new THREE.Mesh(baseStripeGeo, beamMat);
+      baseStripe.position.set(0, 0.58, side * 4.75);
+      baseStripe.userData.celShaded = true;
+      g.add(baseStripe);
     }
-    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 10.4), mat);
-    beam.position.set(0, 6.1, 0);
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 9.5), beamMat);
+    beam.position.set(0, 5.78, 0);
     beam.userData.celShaded = true;
     g.add(beam);
 
-    // Buoy markers
-    const buoyMat = createCelMaterial({ color: Palette.hudAccent, accent: Palette.gate, matcapMix: 0.3 });
-    for (const side of [-1, 1]) {
-      const buoy = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), buoyMat);
-      buoy.position.set(0, 0.4, side * 5);
-      buoy.userData.celShaded = true;
-      g.add(buoy);
-    }
+    addInvertedHullOutlines(g, 0.92);
 
-    addInvertedHullOutlines(g, 1.0);
+    const glow = new THREE.Mesh(
+      new THREE.BoxGeometry(0.56, 0.58, 9.75),
+      new THREE.MeshBasicMaterial({
+        color: Palette.racingLineGlow,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+      }),
+    );
+    glow.position.copy(beam.position);
+    glow.renderOrder = 2;
+    glow.userData.skipEdge = true;
+    g.add(glow);
+
     g.userData.gateIndex = index;
     return g;
   }

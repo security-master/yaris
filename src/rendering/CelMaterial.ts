@@ -117,10 +117,11 @@ void main() {
   vec3 matc = texture2D(uMatcap, muv).rgb;
 
   float shade = dot(ramp, vec3(0.299, 0.587, 0.114));
-  vec3 celBase = uColor * (0.34 + shade * 0.92);
+  vec3 celBase = uColor * (0.42 + shade * 0.86);
   vec3 tint = mix(vec3(shade), ramp, 0.38);
   vec3 base = celBase * tint * uShadeMul;
   base = mix(base, base * matc * 1.35, uMatcapMix);
+  base = max(base, uColor * 0.28);
 
   // Banded specular — hard edge, anime glitter shape
   float spec = hardSpec(n, l, v, 0.92) * 0.85 + hardSpec(n, l, v, 0.97) * 0.5;
@@ -162,7 +163,7 @@ export function createCelMaterial(opts: CelMaterialOptions): THREE.ShaderMateria
       uRimPower: { value: opts.rimPower ?? 2.8 },
       uMatcapMix: { value: opts.matcapMix ?? 0.22 },
       uBandBias: { value: opts.bandBias ?? 1.05 },
-      uShadeMul: { value: opts.shadeMul ?? 1.12 },
+      uShadeMul: { value: opts.shadeMul ?? 1.16 },
     },
     vertexShader: celVert,
     fragmentShader: celFrag,

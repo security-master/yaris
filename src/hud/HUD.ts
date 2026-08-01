@@ -61,38 +61,42 @@ export class HUD {
     const w = window.innerWidth;
     const h = window.innerHeight;
     ctx.clearRect(0, 0, w, h);
+    const isFinished = opts.phase === 'finished';
 
     // Speedometer
-    this.panel(24, h - 150, 170, 120);
-    ctx.fillStyle = hex(Palette.hudAccent);
-    ctx.font = '800 42px Outfit, sans-serif';
-    ctx.fillText(`${Math.round(Math.abs(opts.speed) * 3.2)}`, 40, h - 85);
-    ctx.font = '700 14px Outfit, sans-serif';
-    ctx.fillStyle = hex(Palette.cloudLit);
-    ctx.fillText('KM/H', 40, h - 60);
-    // Boost meter
-    ctx.fillStyle = hex(Palette.hudInk);
-    ctx.fillRect(40, h - 48, 130, 10);
-    ctx.fillStyle = hex(Palette.hudGood);
-    ctx.fillRect(40, h - 48, 130 * opts.boost, 10);
-    ctx.strokeStyle = hex(Palette.hudAccent);
-    ctx.lineWidth = 2;
-    ctx.strokeRect(40, h - 48, 130, 10);
+    if (!isFinished) {
+      this.panel(24, h - 150, 170, 120);
+      ctx.fillStyle = hex(Palette.hudAccent);
+      ctx.font = '800 42px Outfit, sans-serif';
+      ctx.fillText(`${Math.round(Math.abs(opts.speed) * 3.2)}`, 40, h - 85);
+      ctx.font = '700 14px Outfit, sans-serif';
+      ctx.fillStyle = hex(Palette.cloudLit);
+      ctx.fillText('KM/H', 40, h - 60);
+      // Boost meter
+      ctx.fillStyle = hex(Palette.hudInk);
+      ctx.fillRect(40, h - 48, 130, 10);
+      ctx.fillStyle = hex(Palette.hudGood);
+      ctx.fillRect(40, h - 48, 130 * opts.boost, 10);
+      ctx.strokeStyle = hex(Palette.hudAccent);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(40, h - 48, 130, 10);
+    }
 
     // Lap / place
-    this.panel(w - 194, 24, 170, 90);
+    const statsX = w - 284;
+    this.panel(statsX, 24, 260, 94);
     ctx.fillStyle = hex(Palette.cloudLit);
     ctx.font = '700 14px Outfit, sans-serif';
-    ctx.fillText('LAP', w - 174, 50);
+    ctx.fillText('LAP', statsX + 22, 50);
     ctx.fillStyle = hex(Palette.hudAccent);
     ctx.font = '900 32px Syne, sans-serif';
-    ctx.fillText(`${opts.lap}/${opts.totalLaps}`, w - 174, 84);
+    ctx.fillText(`${opts.lap}/${opts.totalLaps}`, statsX + 22, 86);
     ctx.fillStyle = hex(Palette.cloudLit);
     ctx.font = '700 14px Outfit, sans-serif';
-    ctx.fillText('POS', w - 90, 50);
+    ctx.fillText('POS', statsX + 150, 50);
     ctx.fillStyle = hex(Palette.hudGood);
     ctx.font = '900 32px Syne, sans-serif';
-    ctx.fillText(`${opts.place}/${opts.totalRacers}`, w - 90, 84);
+    ctx.fillText(`${opts.place}/${opts.totalRacers}`, statsX + 150, 86);
 
     // Time
     this.panel(w / 2 - 80, 20, 160, 54);
@@ -106,7 +110,7 @@ export class HUD {
     this.drawMinimap(w - 180, h - 180, 150, 150, opts.minimap);
 
     // Corner preview
-    if (Math.abs(this.cornerHint) > 0.25) {
+    if (opts.phase === 'racing' && Math.abs(this.cornerHint) > 0.25) {
       ctx.save();
       ctx.translate(w / 2, h - 80);
       ctx.fillStyle = hex(Palette.hudAccent);
@@ -120,7 +124,7 @@ export class HUD {
       ctx.restore();
     }
 
-    if (this.wrongWay) {
+    if (opts.phase === 'racing' && this.wrongWay) {
       ctx.fillStyle = hex(Palette.hudWarn);
       ctx.font = '900 36px Syne, sans-serif';
       ctx.textAlign = 'center';
@@ -137,8 +141,14 @@ export class HUD {
         font-family: Syne, sans-serif;
         font-weight: 800;
         font-size: ${n > 0 ? 140 : 100}px;
+        line-height: 1;
+        padding: 18px 42px 22px;
+        background: ${hex(Palette.hudPanel)}dd;
+        border: 4px solid ${hex(Palette.hudAccent)};
         color: ${hex(Palette.hudAccent)};
-        text-shadow: 0 0 0 6px ${hex(Palette.hudInk)}, 4px 6px 0 ${hex(Palette.hudInk)};
+        -webkit-text-stroke: 4px ${hex(Palette.hudInk)};
+        text-shadow: 5px 7px 0 ${hex(Palette.hudInk)};
+        box-shadow: 8px 10px 0 ${hex(Palette.hudInk)};
         letter-spacing: 0.04em;
         animation: pop 0.2s ease;
       ">${label}</div>`;

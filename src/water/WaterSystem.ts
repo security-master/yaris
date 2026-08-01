@@ -59,25 +59,27 @@ void main() {
   vec3 n = normalize(vNormal);
   vec3 l = normalize(uLightDir);
   vec3 v = normalize(cameraPosition - vWorldPos);
+  float ndl = max(dot(n, l), 0.0);
 
-  // Banded water by wave height — hard transitions
+  // Banded water by wave height plus a hard light-facing cue.
   float h = vHeight;
+  float bandCue = h + ndl * 0.42 - 0.16;
   vec3 col;
-  if (h < -0.35) col = uDeep;
-  else if (h < 0.25) col = uMid;
-  else if (h < 0.95) col = uShallow;
+  if (bandCue < -1.05) col = uDeep;
+  else if (bandCue < 0.34) col = uMid;
+  else if (bandCue < 1.45) col = uShallow;
   else col = uCrest;
 
   // Quantized diffuse (2–3 bands on water)
-  float ndl = max(dot(n, l), 0.0);
-  float shade = 0.72;
-  if (ndl > 0.55) shade = 1.0;
-  else if (ndl > 0.25) shade = 0.82;
+  float shade = 0.78;
+  if (ndl > 0.62) shade = 1.02;
+  else if (ndl > 0.32) shade = 0.90;
   col *= shade;
+  col = mix(col, uShallow, step(0.70, ndl) * step(-0.20, h) * 0.08);
 
-  // Crest foam — hard white only at high, lit wave tips.
-  float crestFoam = step(0.78, vCrest) * step(0.42, h);
-  col = mix(col, uFoam, crestFoam * 0.96);
+  // Crest foam — hard white only at narrow, lit wave tips.
+  float crestFoam = step(0.86, vCrest) * step(1.05, h) * step(0.36, ndl);
+  col = mix(col, uFoam, crestFoam * 0.9);
 
   // Fresnel rim (banded)
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -89,14 +91,14 @@ void main() {
   vec2 sp = floor(sparkGrid);
   vec2 cell = fract(sparkGrid) - 0.5;
   float sparkSeed = hash21(sp);
-  float sparkPick = step(0.987, sparkSeed);
-  float litFace = step(0.64, ndl) * step(0.1, h);
+  float sparkPick = step(0.991, sparkSeed);
+  float litFace = step(0.68, ndl) * step(0.18, h);
   float tw = step(0.62, fract(sparkSeed * 17.13 + floor(uTime * 9.0) * 0.37));
   float starCore = step(abs(cell.x) + abs(cell.y), 0.055);
   float starSlash = step(abs(cell.x - cell.y), 0.018) * step(abs(cell.x + cell.y), 0.24);
   float starBackslash = step(abs(cell.x + cell.y), 0.018) * step(abs(cell.x - cell.y), 0.24);
   float star = max(starCore, max(starSlash, starBackslash));
-  col += uSparkle * star * sparkPick * litFace * tw * (1.0 - crestFoam) * 1.45;
+  col += uSparkle * star * sparkPick * litFace * tw * (1.0 - crestFoam) * 1.15;
 
   // Depth-ish darkening far from camera (banded)
   float dist = length(cameraPosition.xz - vWorldPos.xz);
@@ -113,9 +115,9 @@ export class WaterSystem {
   private readonly gridSize: number;
   private readonly segments: number;
 
-  constructor(gridSize = 420, segments = 200) {
+  constructor(gridSize = 420, segments = 256) {
     this.gridSize = gridSize;
-    this.segments = Math.max(segments, 200);
+    this.segments = Math.max(segments, 220);
 
     const geo = new THREE.PlaneGeometry(gridSize, gridSize, this.segments, this.segments);
     geo.rotateX(-Math.PI / 2);
@@ -124,7 +126,7 @@ export class WaterSystem {
       uniforms: {
         uTime: { value: 0 },
         uCameraPos: { value: new THREE.Vector3() },
-        uDeep: { value: new THREE.Color(0x0d4f66) },
+        uDeep: { value: new THREE.Color(0x10657d) },
         uMid: { value: new THREE.Color(Palette.waterMid) },
         uShallow: { value: new THREE.Color(Palette.waterShallow) },
         uCrest: { value: new THREE.Color(Palette.waterCrest) },

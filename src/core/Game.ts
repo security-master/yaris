@@ -319,12 +319,13 @@ export class Game {
         boat.physics.state.position.z,
         boat.physics.state.yaw,
         Math.abs(boat.physics.state.speed),
-        boat.physics.state.airborne ? 0.1 : 0.6 + Math.abs(boat.physics.state.speed) * 0.02,
+        boat.physics.state.airborne ? 0.08 : 0.74 + Math.abs(boat.physics.state.speed) * 0.035,
       );
       this.foam.updateRing(
         boat.id,
         boat.physics.state.position.x,
         boat.physics.state.position.z,
+        boat.physics.state.yaw,
         t,
         Math.abs(boat.physics.state.speed),
       );

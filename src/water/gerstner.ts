@@ -21,8 +21,8 @@ export const WAVE_PARAMS: WaveParam[] = [
   { dirX: 0.7, dirZ: -0.7, amplitude: 0.45, wavelength: 16, speed: 1.8, steepness: 0.7 },
   { dirX: -0.85, dirZ: -0.52, amplitude: 0.35, wavelength: 11, speed: 2.1, steepness: 0.75 },
   // Fine chop
-  { dirX: 0.2, dirZ: 0.98, amplitude: 0.18, wavelength: 6.5, speed: 2.6, steepness: 0.8 },
-  { dirX: 0.95, dirZ: -0.3, amplitude: 0.12, wavelength: 4.2, speed: 3.0, steepness: 0.85 },
+  { dirX: 0.2, dirZ: 0.98, amplitude: 0.14, wavelength: 6.5, speed: 2.6, steepness: 0.72 },
+  { dirX: 0.95, dirZ: -0.3, amplitude: 0.08, wavelength: 4.2, speed: 3.0, steepness: 0.76 },
 ];
 
 export interface WaveSample {
@@ -101,8 +101,8 @@ const Wave WAVES[6] = Wave[6](
   Wave(vec2(-0.35, 0.94), 1.10, 36.0, 1.15, 0.50),
   Wave(vec2(0.70, -0.70), 0.45, 16.0, 1.80, 0.70),
   Wave(vec2(-0.85, -0.52), 0.35, 11.0, 2.10, 0.75),
-  Wave(vec2(0.20, 0.98), 0.18, 6.50, 2.60, 0.80),
-  Wave(vec2(0.95, -0.30), 0.12, 4.20, 3.00, 0.85)
+  Wave(vec2(0.20, 0.98), 0.14, 6.50, 2.60, 0.72),
+  Wave(vec2(0.95, -0.30), 0.08, 4.20, 3.00, 0.76)
 );
 
 void gerstnerDisplace(vec3 pos, float t, out vec3 displaced, out vec3 normal, out float crest) {

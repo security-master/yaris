@@ -63,19 +63,38 @@ float hash21(vec2 p) {
 void main() {
   float side = abs(vSide);
   float edgeSeed = hash21(floor(vWorldPos.xz * 1.4 + vec2(floor(vFlow * 0.21), 0.0)));
-  float raggedWidth = 0.70 + edgeSeed * 0.24;
+  float raggedWidth = 0.82 + edgeSeed * 0.16;
   float sideMask = step(side, raggedWidth);
 
-  float movingStripe = step(0.52, fract(vFlow * 0.95 - uTime * 2.1));
-  float fleck = step(0.24, hash21(floor(vWorldPos.xz * 2.1) + floor(uTime * 5.0)));
-  float coreRibbon = step(side, 0.38);
+  float movingStripe = step(0.42, fract(vFlow * 0.82 - uTime * 1.8));
+  float fleck = step(0.18, hash21(floor(vWorldPos.xz * 1.8) + floor(uTime * 4.0)));
+  float coreRibbon = step(side, 0.50);
   float foamMask = sideMask * max(coreRibbon, movingStripe * fleck);
 
-  float alpha = floor(clamp(vAlpha, 0.0, 1.0) * 4.0) * 0.25;
-  if (foamMask < 0.5 || alpha <= 0.0) discard;
+  float lifeAlpha = clamp(vAlpha, 0.0, 1.0);
+  float alpha = 0.16 + floor(lifeAlpha * 5.0) * 0.16;
+  if (foamMask < 0.5 || lifeAlpha <= 0.04) discard;
   gl_FragColor = vec4(uFoam, alpha);
 }
 `;
+
+function createHullFoamGeometry(): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (const side of [-1, 1]) {
+    positions.push(
+      -0.15, 0, side * 0.62,
+      -1.35, 0, side * 1.22,
+      -2.85, 0, side * 0.82,
+      -0.15, 0, side * 0.62,
+      -2.85, 0, side * 0.82,
+      -1.65, 0, side * 0.36,
+    );
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
 
 export class FoamWake {
   readonly group = new THREE.Group();
@@ -133,19 +152,19 @@ export class FoamWake {
     this.wakeMesh.renderOrder = 2;
     this.group.add(this.wakeMesh);
 
-    // Hull foam rings
+    // Hull foam wing cards: white, low-opacity shapes instead of UI-like rings.
+    const hullFoamGeo = createHullFoamGeometry();
     for (let i = 0; i < boatCount; i++) {
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(1.05, 1.65, 18),
+        hullFoamGeo,
         new THREE.MeshBasicMaterial({
           color: Palette.foam,
           transparent: true,
-          opacity: 0.18,
+          opacity: 0.2,
           depthWrite: false,
           side: THREE.DoubleSide,
         }),
       );
-      ring.rotation.x = -Math.PI / 2;
       ring.renderOrder = 3;
       this.ringMeshes.push(ring);
       this.group.add(ring);
@@ -169,14 +188,14 @@ export class FoamWake {
   emitWake(x: number, z: number, heading: number, speed: number, strength: number): void {
     const trail = this.trails[this.emitSlot];
     this.emitSlot = (this.emitSlot + 1) % this.trails.length;
-    if (speed < 2 || strength < 0.05) return;
+    if (speed < 1.2 || strength < 0.05) return;
     const side = Math.sin(heading);
     const fwd = Math.cos(heading);
-    const wakeX = x - fwd * 2.2;
-    const wakeZ = z - side * 2.2;
+    const wakeX = x - fwd * 2.45;
+    const wakeZ = z - side * 2.45;
     const last = trail[trail.length - 1];
-    const width = 0.65 + Math.min(speed * 0.055, 1.55);
-    const wakeStrength = THREE.MathUtils.clamp(strength, 0, 1);
+    const width = 0.8 + Math.min(speed * 0.075, 1.9);
+    const wakeStrength = THREE.MathUtils.clamp(strength * 1.25 + speed * 0.012, 0, 1);
 
     if (last && Math.hypot(last.x - wakeX, last.z - wakeZ) < 0.42) {
       last.width = Math.max(last.width, width);
@@ -209,16 +228,20 @@ export class FoamWake {
     }
   }
 
-  updateRing(index: number, x: number, z: number, t: number, speed: number): void {
+  updateRing(index: number, x: number, z: number, heading: number, t: number, speed: number): void {
     const ring = this.ringMeshes[index];
     if (!ring) return;
     const sample = sampleGerstner(x, z, t);
-    ring.visible = speed > 1.2;
-    ring.position.set(x + sample.dispX, sample.height + 0.055, z + sample.dispZ);
-    const scale = 1.05 + Math.min(speed * 0.045, 1.15);
-    ring.scale.setScalar(scale);
+    ring.visible = speed > 1.4;
+    ring.position.set(x + sample.dispX, sample.height + 0.065, z + sample.dispZ);
+    ring.rotation.set(0, -heading, 0);
+    ring.scale.set(
+      0.95 + Math.min(speed * 0.035, 0.85),
+      1,
+      0.9 + Math.min(speed * 0.025, 0.45),
+    );
     const mat = ring.material as THREE.MeshBasicMaterial;
-    mat.opacity = THREE.MathUtils.clamp(0.1 + speed * 0.012, 0.1, 0.28);
+    mat.opacity = THREE.MathUtils.clamp(0.12 + speed * 0.01, 0.12, 0.27);
   }
 
   update(dt: number, t: number): void {
