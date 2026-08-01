@@ -49,7 +49,7 @@ export class RaceManager {
       boat,
       param: this.course.projectParamRel(p.x, p.z, 0),
       progress: 0,
-      lap: 1,
+      lap: 0, // becomes 1 the moment the start line is crossed
       nextGate: 0,
       missedGates: 0,
       gateFlash: 0,
@@ -72,6 +72,28 @@ export class RaceManager {
     this.running = true;
     this.raceTime = 0;
     for (const r of this.racers) {
+      r.lapStartTime = 0;
+    }
+  }
+
+  /** fresh race with the same boats (assumes boats are back on the grid) */
+  reset(): void {
+    this.running = false;
+    this.raceTime = 0;
+    this.playerFinished = false;
+    for (const r of this.racers) {
+      const p = r.boat.physics.position;
+      r.param = this.course.projectParamRel(p.x, p.z, 0);
+      r.progress = r.param > 0.5 ? r.param - 1 : r.param;
+      r.lap = 0;
+      r.nextGate = 0;
+      r.missedGates = 0;
+      r.gateFlash = 0;
+      r.wrongWayTimer = 0;
+      r.wrongWay = false;
+      r.finished = false;
+      r.finishTime = 0;
+      r.lapTimes = [];
       r.lapStartTime = 0;
     }
   }
@@ -99,7 +121,8 @@ export class RaceManager {
       // ---- lap bookkeeping ----
       const lapNow = Math.floor(r.progress) + 1;
       if (lapNow > r.lap) {
-        r.lapTimes.push(this.raceTime - r.lapStartTime);
+        // crossing INTO lap 1 is the race start, not a completed lap
+        if (r.lap >= 1) r.lapTimes.push(this.raceTime - r.lapStartTime);
         r.lapStartTime = this.raceTime;
         r.lap = lapNow;
         if (lapNow > TOTAL_LAPS) {

@@ -13,6 +13,8 @@ import { FoamSplats } from "../water/FoamSplats";
 import { Course } from "../race/Course";
 import { RaceManager } from "../race/RaceManager";
 import { AIController, AI_PERSONALITIES } from "../ai/AIController";
+import { HUD } from "../ui/HUD";
+import { AudioEngine } from "../audio/AudioEngine";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
 import { OUTLINE_RESOLUTION } from "../render/Outline";
@@ -35,7 +37,12 @@ export class Game {
   readonly course: Course;
   readonly race: RaceManager;
   readonly ais: AIController[] = [];
+  readonly hud: HUD;
+  readonly audio: AudioEngine;
   private post!: PostPipeline;
+  private lastCountdownBeep = 99;
+  private prevGateFlash = 0;
+  private prevBoostTime = 0;
   player!: Boat;
 
   state: GameState = "countdown";
@@ -71,25 +78,9 @@ export class Game {
     this.race = new RaceManager(this.course);
 
     // grid: staggered pairs behind the start line (player in front row)
-    const gridSlots = [8, 14, 20, 26]; // metres behind the line
-    const lateral = [3.2, -3.2, 3.2, -3.2];
     for (let i = 0; i < 4; i++) {
-      const back = gridSlots[i] / this.course.length;
-      const t = this.course.absParam(1 - back);
-      const p = this.course.curve.getPointAt(t);
-      const tan = this.course.curve.getTangentAt(t);
-      const yaw = Math.atan2(tan.x, tan.z);
-      const sideX = -tan.z * lateral[i];
-      const sideZ = tan.x * lateral[i];
-      const boat = new Boat(
-        this.scene,
-        Palette.liveries[i],
-        i,
-        i === 0,
-        p.x + sideX,
-        p.z + sideZ,
-        yaw
-      );
+      const slot = this.gridSlot(i);
+      const boat = new Boat(this.scene, Palette.liveries[i], i, i === 0, slot.x, slot.z, slot.yaw);
       this.boats.push(boat);
       enableEdgeLines(boat.group);
       this.race.addBoat(boat);
@@ -100,6 +91,8 @@ export class Game {
     this.player = this.boats[0];
 
     this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
+    this.hud = new HUD(this);
+    this.audio = new AudioEngine();
 
     this.chase.mode = "orbit";
     this.chase.snapBehind(this.chaseTarget());
@@ -113,6 +106,32 @@ export class Game {
     if (!this.harnessMode) {
       this.renderer.setAnimationLoop((t) => this.frame(t));
     }
+  }
+
+  private gridSlot(i: number): { x: number; z: number; yaw: number } {
+    const gridSlots = [8, 14, 20, 26]; // metres behind the line
+    const lateral = [3.2, -3.2, 3.2, -3.2];
+    const back = gridSlots[i] / this.course.length;
+    const t = this.course.absParam(1 - back);
+    const p = this.course.curve.getPointAt(t);
+    const tan = this.course.curve.getTangentAt(t);
+    const yaw = Math.atan2(tan.x, tan.z);
+    return { x: p.x - tan.z * lateral[i], z: p.z + tan.x * lateral[i], yaw };
+  }
+
+  /** full restart: boats back on the grid, fresh race, countdown again */
+  resetRace(): void {
+    for (let i = 0; i < this.boats.length; i++) {
+      const slot = this.gridSlot(i);
+      this.boats[i].physics.reset(slot.x, slot.z, slot.yaw, this.time);
+      this.boats[i].celebrating = false;
+    }
+    this.race.reset();
+    this.state = "countdown";
+    this.countdown = COUNTDOWN_TIME;
+    this.lastCountdownBeep = 99;
+    this.chase.mode = "orbit";
+    this.chase.snapBehind(this.chaseTarget());
   }
 
   private chaseTarget() {
@@ -167,11 +186,18 @@ export class Game {
     switch (this.state) {
       case "countdown": {
         this.countdown -= dt;
+        const beep = Math.ceil(this.countdown);
+        if (beep < this.lastCountdownBeep && beep >= 1 && beep <= 3) {
+          this.lastCountdownBeep = beep;
+          this.audio.horn(false);
+        }
         if (this.countdown <= 0) {
           this.state = "racing";
           this.chase.mode = "chase";
           this.chase.snapBehind(this.chaseTarget());
           this.race.start();
+          this.audio.horn(true);
+          this.hud.notifyGo();
         }
         break;
       }
@@ -195,6 +221,7 @@ export class Game {
         this.player.physics.controls.drift = false;
         this.updateAI(dt);
         this.race.update(dt);
+        if (this.input.confirmPressed) this.resetRace();
         break;
       }
       case "title":
@@ -210,10 +237,21 @@ export class Game {
         b.wake.update(dt, this.time, b.physics, this.foam);
         if (b.physics.slam && b.isPlayer) {
           this.chase.addShake(b.physics.slam.strength * 0.8);
+          this.audio.slam(b.physics.slam.strength);
         }
       }
       this.resolveBoatCollisions();
     }
+
+    // audio one-shots driven by player race state
+    const pr = this.race.racers[0];
+    if (pr) {
+      if (pr.gateFlash > this.prevGateFlash + 0.01) this.audio.gateChime();
+      this.prevGateFlash = pr.gateFlash;
+    }
+    const pb = this.player.physics;
+    if (pb.boostTime > this.prevBoostTime + 0.01) this.audio.boostWhoosh();
+    this.prevBoostTime = pb.boostTime;
   }
 
   private updateAI(dt: number): void {
@@ -257,6 +295,7 @@ export class Game {
           const hard = Math.min(1, -closing / 8);
           if ((this.boats[i].isPlayer || this.boats[j].isPlayer) && hard > 0.15) {
             this.chase.addShake(hard * 0.5);
+            this.audio.collision(hard);
           }
           // splash where they banged together
           this.foam.spawn(
@@ -287,6 +326,17 @@ export class Game {
     this.sky.update(this.time, this.chase.camera);
     this.course.setBoatPositions(this.boats.map((b) => b.physics.position));
     this.course.update(this.time, this.chase.camera);
+    this.hud.update(dt);
+
+    const pb = this.player.physics;
+    this.audio.update({
+      speed: pb.speed,
+      throttle: pb.controls.throttle,
+      wetness: pb.wetness,
+      drifting: pb.driftActive,
+      boosting: pb.boostTime > 0,
+      airborne: pb.airborne,
+    });
   }
 
   render(): void {

@@ -82,11 +82,34 @@ export class BoatPhysics {
   /** set by step() when the hull slams down; consumed by Game */
   slam: SlamEvent | null = null;
 
-  controls: BoatControls = { throttle: 0, brake: 0, steer: 0, drift: false };
+  readonly controls: BoatControls = { throttle: 0, brake: 0, steer: 0, drift: false };
 
   constructor(x: number, z: number, yaw: number) {
-    this.position.set(x, getWaterHeight(x, z, 0) + 0.4, z);
+    this.reset(x, z, yaw, 0);
+  }
+
+  /** put the boat back on the grid (race restart) */
+  reset(x: number, z: number, yaw: number, time: number): void {
+    this.position.set(x, getWaterHeight(x, z, time) + 0.4, z);
+    this.velocity.set(0, 0, 0);
     this.yaw = yaw;
+    this.pitch = 0;
+    this.roll = 0;
+    this.pitchVel = 0;
+    this.rollVel = 0;
+    this.yawVel = 0;
+    this.speed = 0;
+    this.slide = 0;
+    this.boostCharge = 0;
+    this.boostTime = 0;
+    this.thrustMul = 1;
+    this.airborne = false;
+    this.airTime = 0;
+    this.slam = null;
+    this.controls.throttle = 0;
+    this.controls.brake = 0;
+    this.controls.steer = 0;
+    this.controls.drift = false;
     this.updateQuaternion();
   }
 
