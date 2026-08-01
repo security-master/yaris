@@ -73,7 +73,7 @@ export function sampleGerstner(x: number, z: number, t: number, out?: WaveSample
     dYdZ += dz * k * a * c;
 
     // Crest sharpening proxy
-    crest += Math.max(0, s) * (a / 1.55) * (i < 2 ? 0.55 : 0.2);
+    crest += Math.max(0, s) * (a / 1.25) * (i < 2 ? 0.55 : 0.2);
   }
 
   result.dispX = hx;
