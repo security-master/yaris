@@ -7,8 +7,6 @@
 import * as THREE from "three";
 import { Palette } from "../core/Palette";
 import { makeToonMaterial } from "../render/ToonMaterial";
-import { outlineHierarchy } from "../render/Outline";
-import { enableEdgeLines } from "../render/PostPipeline";
 import { getWaterHeight, getWaterNormal } from "../water/waves";
 import type { Course } from "./Course";
 
@@ -63,8 +61,13 @@ export class Buoys {
       base.position.y = 0.05;
       buoy.add(base);
 
-      outlineHierarchy(buoy, { widthPx: 2.0 });
-      enableEdgeLines(buoy);
+      buoy.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.castShadow = true;
+          m.receiveShadow = true;
+        }
+      });
       buoy.position.set(bx, 0, bz);
       buoy.userData.phase = Math.random() * 10;
       this.buoys.push(buoy);

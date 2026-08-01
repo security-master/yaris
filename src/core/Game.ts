@@ -1,11 +1,12 @@
 /**
- * Game orchestrator: owns the renderer, scene, systems and the
- * race state machine (title -> countdown -> racing -> finished).
+ * Game orchestrator: renderer, systems, race state machine
+ * (menu -> countdown -> racing -> finished).
  */
 
 import * as THREE from "three";
 import { Ocean } from "../water/Ocean";
 import { Sky } from "../render/Sky";
+import { Lighting } from "../render/Lighting";
 import { Input } from "./Input";
 import { ChaseCamera } from "../camera/ChaseCamera";
 import { Boat } from "../boats/Boat";
@@ -13,17 +14,19 @@ import { FoamSplats } from "../water/FoamSplats";
 import { Course } from "../race/Course";
 import { RaceManager } from "../race/RaceManager";
 import { Buoys } from "../race/Buoys";
+import { GuideArrows } from "../race/GuideArrows";
+import { TrackRail } from "../race/TrackRail";
 import { AIController, AI_PERSONALITIES } from "../ai/AIController";
 import { HUD } from "../ui/HUD";
+import { Menu } from "../ui/Menu";
 import { AudioEngine } from "../audio/AudioEngine";
+import { MusicPlayer } from "../audio/Music";
 import { Spray, BoatSprayEmitter } from "../water/Spray";
 import { Quality } from "./Quality";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
-import { OUTLINE_RESOLUTION } from "../render/Outline";
-import { PostPipeline, enableEdgeLines } from "../render/PostPipeline";
 
-export type GameState = "title" | "countdown" | "racing" | "finished";
+export type GameState = "menu" | "countdown" | "racing" | "finished";
 
 const FIXED_DT = 1 / 120;
 const COUNTDOWN_TIME = 3.6;
@@ -35,29 +38,32 @@ export class Game {
   readonly chase: ChaseCamera;
   readonly ocean: Ocean;
   readonly sky: Sky;
+  readonly lighting: Lighting;
   readonly foam: FoamSplats;
   readonly boats: Boat[] = [];
   readonly course: Course;
   readonly race: RaceManager;
   readonly ais: AIController[] = [];
   readonly hud: HUD;
+  readonly menu: Menu;
   readonly audio: AudioEngine;
+  readonly music: MusicPlayer;
   readonly spray: Spray;
   readonly buoys: Buoys;
+  readonly guides: GuideArrows;
+  readonly rail: TrackRail;
   private sprayEmitters: BoatSprayEmitter[] = [];
   private quality: Quality | null = null;
-  private post!: PostPipeline;
   private lastCountdownBeep = 99;
   private prevGateFlash = 0;
   private prevBoostTime = 0;
+  private resultPosted = false;
   player!: Boat;
 
-  state: GameState = "countdown";
+  state: GameState = "menu";
   countdown = COUNTDOWN_TIME;
-  /** harness: let an AI drive the player boat (full-race soak tests) */
   autopilot = false;
   private autopilotAI: AIController | null = null;
-  /** simulation time (drives waves, physics, animation) */
   time = 0;
   private accumulator = 0;
   private harnessMode: boolean;
@@ -72,52 +78,60 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // accumulate stats across the whole frame (foam RT + prepass + composer)
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
     this.input = new Input();
     this.chase = new ChaseCamera(window.innerWidth / window.innerHeight);
+    this.lighting = new Lighting(this.renderer, this.scene);
     this.ocean = new Ocean(this.scene);
     this.sky = new Sky(this.scene);
-    this.ocean.sunDir.copy(this.sky.sunDir);
-    setToonSun(this.sky.sunDir);
+    this.ocean.sunDir.copy(this.lighting.sunDir);
+    setToonSun(this.lighting.sunDir);
     this.foam = new FoamSplats();
     this.ocean.setFoamMap(this.foam.texture, this.foam.center, this.foam.size);
 
     this.course = new Course(this.scene);
     this.race = new RaceManager(this.course);
+    this.rail = new TrackRail(this.course);
 
-    // grid: staggered pairs behind the start line (player in front row)
     for (let i = 0; i < 4; i++) {
       const slot = this.gridSlot(i);
-      const boat = new Boat(this.scene, Palette.liveries[i], i, i === 0, slot.x, slot.z, slot.yaw);
+      const boat = new Boat(this.scene, { ...Palette.liveries[i] }, i, i === 0, slot.x, slot.z, slot.yaw);
       this.boats.push(boat);
-      enableEdgeLines(boat.group);
       this.race.addBoat(boat);
       this.sprayEmitters.push(new BoatSprayEmitter());
-      if (i > 0) {
-        this.ais.push(new AIController(boat, AI_PERSONALITIES[i - 1], i));
-      }
+      if (i > 0) this.ais.push(new AIController(boat, AI_PERSONALITIES[i - 1], i));
     }
     this.player = this.boats[0];
     this.spray = new Spray(this.scene);
     this.buoys = new Buoys(this.scene, this.course);
+    this.guides = new GuideArrows(this.scene, this.course);
     this.chase.obstacles = this.course.pylons;
 
-    this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
-    this.hud = new HUD(this);
     this.audio = new AudioEngine();
+    this.music = new MusicPlayer();
+    this.hud = new HUD(this);
+    this.menu = new Menu(this.music, this.audio);
+    this.menu.onStart = (color) => this.beginRace(color);
 
     this.chase.mode = "orbit";
     this.chase.snapBehind(this.chaseTarget());
 
-    OUTLINE_RESOLUTION.value.set(
-      window.innerWidth * this.renderer.getPixelRatio(),
-      window.innerHeight * this.renderer.getPixelRatio()
-    );
     window.addEventListener("resize", () => this.onResize());
+
+    if (this.harnessMode) {
+      this.menu.hide();
+      this.state = "countdown";
+    } else {
+      this.state = "menu";
+      this.menu.show();
+    }
 
     if (!this.harnessMode) {
       this.quality = new Quality((pr) => this.applyPixelRatio(pr));
@@ -131,30 +145,47 @@ export class Game {
   }
 
   private gridSlot(i: number): { x: number; z: number; yaw: number } {
-    const gridSlots = [8, 14, 20, 26]; // metres behind the line
+    const gridSlots = [8, 14, 20, 26];
     const lateral = [3.2, -3.2, 3.2, -3.2];
     const back = gridSlots[i] / this.course.length;
     const t = this.course.absParam(1 - back);
     const p = this.course.curve.getPointAt(t);
     const tan = this.course.curve.getTangentAt(t);
-    // every boat lines up facing down the start straight (clean grid read)
     const tanStart = this.course.curve.getTangentAt(this.course.startParam);
     const yaw = Math.atan2(tanStart.x, tanStart.z);
     return { x: p.x - tan.z * lateral[i], z: p.z + tan.x * lateral[i], yaw };
   }
 
-  /** full restart: boats back on the grid, fresh race, countdown again */
-  resetRace(): void {
+  beginRace(boatColor: number): void {
+    this.player.setHullColor(boatColor);
+    this.resultPosted = false;
+    this.resetRace(false);
+    this.state = "countdown";
+    this.countdown = COUNTDOWN_TIME;
+    this.lastCountdownBeep = 99;
+    this.chase.mode = "orbit";
+    this.chase.snapBehind(this.chaseTarget());
+    this.music.start();
+  }
+
+  resetRace(showMenu = true): void {
     for (let i = 0; i < this.boats.length; i++) {
       const slot = this.gridSlot(i);
       this.boats[i].physics.reset(slot.x, slot.z, slot.yaw, this.time);
       this.boats[i].celebrating = false;
     }
     this.race.reset();
-    this.state = "countdown";
-    this.countdown = COUNTDOWN_TIME;
-    this.lastCountdownBeep = 99;
-    this.chase.mode = "orbit";
+    this.resultPosted = false;
+    if (showMenu && !this.harnessMode) {
+      this.state = "menu";
+      this.menu.show();
+      this.chase.mode = "orbit";
+    } else {
+      this.state = "countdown";
+      this.countdown = COUNTDOWN_TIME;
+      this.lastCountdownBeep = 99;
+      this.chase.mode = "orbit";
+    }
     this.chase.snapBehind(this.chaseTarget());
   }
 
@@ -178,7 +209,6 @@ export class Game {
     this.render();
   }
 
-  /** Advance simulation by dt seconds using fixed physics steps. */
   advance(dt: number): void {
     this.accumulator += dt;
     while (this.accumulator >= FIXED_DT) {
@@ -188,19 +218,24 @@ export class Game {
     this.updateVisuals(dt);
   }
 
-  /** Harness hook: jump straight into a state. */
-  forceState(name: GameState): void {
-    this.state = name;
+  forceState(name: GameState | "title"): void {
+    if (name === "title") name = "menu";
+    this.state = name as GameState;
     if (name === "racing") {
+      this.menu.hide();
       this.countdown = 0;
       this.chase.mode = "chase";
       this.chase.snapBehind(this.chaseTarget());
       if (!this.race.running) this.race.start();
     } else if (name === "countdown") {
+      this.menu.hide();
       this.countdown = COUNTDOWN_TIME;
       this.chase.mode = "orbit";
     } else if (name === "finished") {
+      this.menu.hide();
       this.chase.mode = "finish";
+    } else if (name === "menu") {
+      this.menu.show();
     }
   }
 
@@ -209,9 +244,10 @@ export class Game {
     this.input.update(dt);
 
     switch (this.state) {
+      case "menu":
+        break;
       case "countdown": {
         this.countdown -= dt;
-        // Enter or throttle skips the rest of the countdown
         if (this.input.confirmPressed || this.input.throttle > 0.5) {
           this.countdown = Math.min(this.countdown, 0);
         }
@@ -233,14 +269,18 @@ export class Game {
       case "racing": {
         if (this.autopilot) {
           if (!this.autopilotAI) {
-            this.autopilotAI = new AIController(this.player, { name: "AUTO", skill: 0.95, aggression: 0.8, erratic: 0.05, lineBias: 0 }, 99);
+            this.autopilotAI = new AIController(
+              this.player,
+              { name: "AUTO", skill: 0.95, aggression: 0.8, erratic: 0.05, lineBias: 0 },
+              99
+            );
           }
           this.autopilotAI.update(dt, this.course, this.race, this.race.racers[0], this.boats, null);
         } else {
           const pc = this.player.physics.controls;
           pc.throttle = this.input.throttle;
           pc.brake = this.input.brake;
-          pc.steer = this.input.steer;
+          pc.steer = -this.input.steer;
           pc.drift = this.input.drift;
         }
         this.updateAI(dt);
@@ -248,29 +288,28 @@ export class Game {
         if (this.race.playerFinished) {
           this.state = "finished";
           this.chase.mode = "finish";
+          void this.postResult();
         }
         break;
       }
       case "finished": {
-        // player coasts; AI keep racing in the background of the results cam
         this.player.physics.controls.throttle = 0;
         this.player.physics.controls.drift = false;
         this.updateAI(dt);
         this.race.update(dt);
-        if (this.input.confirmPressed) this.resetRace();
+        if (this.input.confirmPressed) this.resetRace(true);
         break;
       }
-      case "title":
-        this.player.physics.controls.throttle = 0;
-        this.player.physics.controls.drift = false;
-        break;
     }
 
-    // physics for all boats (frozen during countdown so the grid holds)
-    if (this.state !== "countdown") {
+    if (this.state !== "countdown" && this.state !== "menu") {
       for (let i = 0; i < this.boats.length; i++) {
         const b = this.boats[i];
+        b.physics.thrustMul = 1;
         b.physics.step(dt, this.time);
+        // keep everyone near the racing line
+        const rel = this.race.racers[i]?.param ?? 0;
+        this.rail.apply(b.physics, rel, dt);
         b.wake.update(dt, this.time, b.physics, this.foam);
         this.sprayEmitters[i].update(dt, this.time, b.physics, this.spray);
         if (b.physics.slam && b.isPlayer) {
@@ -281,7 +320,6 @@ export class Game {
       this.resolveBoatCollisions();
     }
 
-    // audio one-shots driven by player race state
     const pr = this.race.racers[0];
     if (pr) {
       if (pr.gateFlash > this.prevGateFlash + 0.01) this.audio.gateChime();
@@ -292,19 +330,32 @@ export class Game {
     this.prevBoostTime = pb.boostTime;
   }
 
+  private async postResult(): Promise<void> {
+    if (this.resultPosted) return;
+    this.resultPosted = true;
+    const r = this.race.racers[0];
+    if (!r) return;
+    const best = r.lapTimes.length ? Math.min(...r.lapTimes) : null;
+    await this.menu.publishResult({
+      finishTimeMs: Math.round(r.finishTime * 1000),
+      bestLapMs: best != null ? Math.round(best * 1000) : null,
+      position: r.position,
+      boatColor: this.player.livery.hull,
+      missedGates: r.missedGates,
+    });
+  }
+
   private updateAI(dt: number): void {
     const playerState = this.race.racers[0] ?? null;
     for (let i = 0; i < this.ais.length; i++) {
       const ai = this.ais[i];
       const state = this.race.racers[i + 1];
-      ai.update(dt, this.course, this.race, state, this.boats.map((b) => b), playerState);
+      ai.update(dt, this.course, this.race, state, this.boats, playerState);
     }
   }
 
-  private static _sep = new THREE.Vector3();
-  /** simple sphere-sphere pushes between boats, with a bit of bounce */
   private resolveBoatCollisions(): void {
-    const R = 1.9; // effective boat radius
+    const R = 1.9;
     for (let i = 0; i < this.boats.length; i++) {
       for (let j = i + 1; j < this.boats.length; j++) {
         const a = this.boats[i].physics;
@@ -320,7 +371,6 @@ export class Game {
         a.position.z -= nz * overlap * 0.5;
         b.position.x += nx * overlap * 0.5;
         b.position.z += nz * overlap * 0.5;
-        // exchange a portion of the closing velocity along the normal
         const rvx = b.velocity.x - a.velocity.x;
         const rvz = b.velocity.z - a.velocity.z;
         const closing = rvx * nx + rvz * nz;
@@ -335,7 +385,6 @@ export class Game {
             this.chase.addShake(hard * 0.5);
             this.audio.collision(hard);
           }
-          // splash where they banged together
           this.foam.spawn(
             {
               x: (a.position.x + b.position.x) / 2,
@@ -359,14 +408,22 @@ export class Game {
       b.celebrating = this.race.racers[i]?.finished ?? false;
       b.update(dt, this.time);
     }
-    this.chase.update(dt, this.time, this.chaseTarget());
+    if (this.state !== "menu") {
+      this.chase.update(dt, this.time, this.chaseTarget());
+    } else {
+      this.chase.mode = "orbit";
+      this.chase.update(dt, this.time, this.chaseTarget());
+    }
+    this.lighting.follow(this.player.physics.position);
     this.ocean.update(this.time, this.chase.camera);
     this.sky.update(this.time, this.chase.camera);
     this.course.setBoatPositions(this.boats.map((b) => b.physics.position));
     this.course.update(this.time, this.chase.camera);
     this.buoys.update(this.time, this.chase.camera);
+    const rel = this.race.racers[0]?.param ?? 0;
+    this.guides.update(this.time, rel);
     this.spray.update(this.time);
-    this.hud.update(dt);
+    if (this.state !== "menu") this.hud.update(dt);
 
     const pb = this.player.physics;
     this.audio.update({
@@ -390,7 +447,7 @@ export class Game {
       }))
     );
     this.foam.render(this.renderer, this.chase.camera, this.time);
-    this.post.render(this.scene, this.chase.camera);
+    this.renderer.render(this.scene, this.chase.camera);
   }
 
   private onResize(): void {
@@ -399,7 +456,5 @@ export class Game {
     this.renderer.setSize(w, h);
     this.chase.camera.aspect = w / h;
     this.chase.camera.updateProjectionMatrix();
-    OUTLINE_RESOLUTION.value.set(w * this.renderer.getPixelRatio(), h * this.renderer.getPixelRatio());
-    this.post.setSize(w, h);
   }
 }

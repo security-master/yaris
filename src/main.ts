@@ -1,7 +1,6 @@
 import * as THREE from "three";
-// NPR pipeline: palette hex values ARE the final screen colors.
-// No linear-workflow conversions anywhere — what we author is what ships.
-THREE.ColorManagement.enabled = false;
+// Photorealistic pipeline: linear workflow + ACES tone mapping in the renderer.
+THREE.ColorManagement.enabled = true;
 
 import { Game } from "./core/Game";
 import { installHarness } from "./core/Harness";
@@ -16,5 +15,4 @@ if (harnessMode) {
   installHarness(game);
 }
 
-// expose for quick console debugging in dev
 (window as unknown as { __GAME__: Game }).__GAME__ = game;

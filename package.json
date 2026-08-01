@@ -2,7 +2,7 @@
   "name": "inkwake-gp",
   "private": true,
   "version": "1.0.0",
-  "description": "InkWake GP - a cel-shaded arcade boat racing game. Zero external assets: every mesh, texture and sound is generated in code.",
+  "description": "InkWake GP - photorealistic arcade boat racing. Zero external assets; optional Supabase Google auth + leaderboard.",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,6 +12,7 @@
     "shots": "node tools/screenshot.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.111.0",
     "three": "^0.185.1"
   },
   "devDependencies": {

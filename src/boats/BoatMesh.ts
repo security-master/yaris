@@ -8,7 +8,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { makeToonMaterial } from "../render/ToonMaterial";
+import { makeGlassMaterial, makeToonMaterial } from "../render/ToonMaterial";
 import { Palette } from "../core/Palette";
 
 interface Section {
@@ -118,16 +118,18 @@ export interface BoatMeshResult {
   /** handlebar grip targets for the rider's hands (L, R) */
   gripL: THREE.Object3D;
   gripR: THREE.Object3D;
+  hullMat: THREE.MeshPhysicalMaterial;
+  setHullColor: (hex: number) => void;
 }
 
 export function buildBoatMesh(livery: Livery): BoatMeshResult {
   const group = new THREE.Group();
   group.name = "boat";
 
-  const hullMat = makeToonMaterial({ color: livery.hull, specular: 0.75, shininess: 90, rim: 0.7, matcap: 0.05 });
-  const deckMat = makeToonMaterial({ color: livery.deck, specular: 0.35, shininess: 50, rim: 0.5 });
-  const trimMat = makeToonMaterial({ color: livery.trim, specular: 0.5, shininess: 70, rim: 0.4 });
-  const glassMat = makeToonMaterial({ color: 0x9fd8f5, specular: 1.0, shininess: 160, rim: 0.9, matcap: 0.55 });
+  const hullMat = makeToonMaterial({ color: livery.hull, specular: 0.85, shininess: 110, metalness: 0.25, roughness: 0.28, clearcoat: 0.85 });
+  const deckMat = makeToonMaterial({ color: livery.deck, specular: 0.4, shininess: 50, metalness: 0.05, roughness: 0.45, clearcoat: 0.35 });
+  const trimMat = makeToonMaterial({ color: livery.trim, specular: 0.6, shininess: 80, metalness: 0.55, roughness: 0.35 });
+  const glassMat = makeGlassMaterial(0xa8d4ef);
 
   // hull + transom
   const hullGeo = loft(SECTIONS.map(hullRing), false);
@@ -157,8 +159,6 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
   shield.rotation.x = -0.52;
   shield.scale.z = 0.75;
   shield.name = "windshield";
-  shield.userData.doubleSided = true;
-  glassMat.side = THREE.DoubleSide;
   group.add(shield);
 
   // engine cowl behind the cockpit: capsule lying flat
@@ -278,5 +278,10 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
   gripR.position.set(0.31, 1.16, 0.12);
   group.add(gripR);
 
-  return { group, seatAnchor, gripL, gripR };
+  const setHullColor = (hex: number) => {
+    hullMat.color.setHex(hex);
+    livery.hull = hex;
+  };
+
+  return { group, seatAnchor, gripL, gripR, hullMat, setHullColor };
 }

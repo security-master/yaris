@@ -18,8 +18,6 @@ import * as THREE from "three";
 import { glslWaveChunk, getWaterHeight, getWaterNormal } from "../water/waves";
 import { Palette } from "../core/Palette";
 import { makeToonMaterial } from "../render/ToonMaterial";
-import { outlineHierarchy } from "../render/Outline";
-import { enableEdgeLines } from "../render/PostPipeline";
 
 const COURSE_SCALE = 0.72;
 const CONTROL_POINTS: [number, number][] = (
@@ -267,8 +265,13 @@ export class Course {
       group.add(banner);
     }
 
-    outlineHierarchy(group, { widthPx: 2.0 });
-    enableEdgeLines(group);
+    group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
+    });
     return group;
   }
 

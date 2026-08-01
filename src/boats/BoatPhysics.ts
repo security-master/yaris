@@ -193,7 +193,7 @@ export class BoatPhysics {
     // ------------------------------------------------------------------
     this.driftActive = c.drift && Math.abs(this.speed) > 8 && this.wetness > 0;
     const steerGain = (0.55 + speedT * 1.15) * (this.driftActive ? 1.75 : 1);
-    // steer +1 = right: yaw increases (atan2(x, z) convention)
+    // +steer turns toward +X (right when looking along +Z / from behind).
     const targetYawVel = c.steer * steerGain * (this.speed >= 0 ? 1 : -1);
     const yawResponse = this.wetness > 0 ? 7.5 : 1.6; // little authority in the air
     this.yawVel += (targetYawVel - this.yawVel) * Math.min(1, dt * yawResponse);

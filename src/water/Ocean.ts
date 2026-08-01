@@ -141,41 +141,23 @@ export class Ocean {
           vec3 V = normalize(uCamPos - vWorldPos);
           float dist = length(uCamPos - vWorldPos);
 
-          // --------------------------------------------------------------
-          // 1. Height-banded base color, hard steps. A touch of animated
-          //    noise on the thresholds keeps band borders alive & painterly.
-          // --------------------------------------------------------------
-          float bandNoise = (vnoise(vWorldPos.xz * 0.23 + uTime * 0.22) - 0.5) * 0.34;
-          bandNoise += (vnoise(vWorldPos.xz * 0.06 - uTime * 0.05) - 0.5) * 0.22;
-          float h = vHeight + bandNoise;
-          vec3 col = uDeep;
-          col = mix(col, uMid,   step(-0.62, h));
-          col = mix(col, uLight, step(0.55, h));
-          col = mix(col, uCrest, step(1.25, h));
+          // Photorealistic water: smooth height grading + Schlick fresnel
+          // sky reflection + GGX-ish sun specular + soft foam.
+          float h = vHeight;
+          float ht = smoothstep(-1.1, 1.4, h);
+          vec3 col = mix(uDeep, uMid, smoothstep(-1.0, 0.15, h));
+          col = mix(col, uLight, smoothstep(0.2, 1.1, h));
+          col = mix(col, uCrest, smoothstep(0.9, 1.7, h) * 0.55);
 
-          // Fresnel band: grazing angles flip to a lighter tone in one
-          // hard step, so distant water reads bright like anime cels.
-          // Noise on the threshold keeps the band edge organic instead of
-          // tracing hard polygonal contours across the mesh.
-          float fres = 1.0 - clamp(dot(N, V), 0.0, 1.0);
-          // suppressed near the camera: at close range the band edge would
-          // trace straight polygon contours across the foreground
-          float fresBand = step(0.72 + bandNoise * 0.28, fres) * smoothstep(20.0, 48.0, dist);
-          col = mix(col, uLight, fresBand * 0.65);
+          float ndotv = clamp(dot(N, V), 0.0, 1.0);
+          float fres = pow(1.0 - ndotv, 3.0);
+          vec3 skyRef = mix(uHorizonColor, uLight * 1.15, clamp(N.y * 0.7 + 0.15, 0.0, 1.0));
+          col = mix(col, skyRef, fres * 0.72);
 
-          // --------------------------------------------------------------
-          // 2. Crest foam: appears above a height threshold, broken up by
-          //    two octaves of animated noise, HARD edge. Sells the style.
-          // --------------------------------------------------------------
-          float crestMask = smoothstep(1.05, 1.7, vHeight + bandNoise * 0.4);
           float foamNoise = vnoise(vWorldPos.xz * 0.9 + vec2(uTime * 0.7, -uTime * 0.4));
           foamNoise += 0.5 * vnoise(vWorldPos.xz * 2.3 - vec2(uTime * 0.9, uTime * 0.5));
-          float crestFoam = step(1.05, crestMask * 1.4 + foamNoise * 0.75);
+          float crestFoam = smoothstep(1.05, 1.65, vHeight + foamNoise * 0.25);
 
-          // --------------------------------------------------------------
-          // 3. World-space foam splat map (wakes, hull rings, landings).
-          // --------------------------------------------------------------
-          // +u = world +x, +v = world -z (see FoamSplats ortho basis)
           vec2 fUv = vec2(vWorldPos.x - uFoamCenter.x, uFoamCenter.y - vWorldPos.z) / uFoamSize + 0.5;
           float splat = 0.0;
           float hullShadow = 0.0;
@@ -186,39 +168,17 @@ export class Ocean {
             splat = fm.r * edge * 1.65;
             hullShadow = fm.g * edge;
           }
-          // quantize splat foam into two hard levels: bright core + fringe
-          float splatFoam = step(0.46, splat + foamNoise * 0.24);
-          float splatFringe = step(0.18, splat + foamNoise * 0.16) * 0.5;
-
+          float splatFoam = smoothstep(0.22, 0.65, splat + foamNoise * 0.12);
           float foam = max(crestFoam, splatFoam);
-          // hull contact shadow: darken + cool the water under boats
-          // (quantized to two levels so it stays cel)
-          float shadowBand = step(0.25, hullShadow) * 0.14 + step(0.55, hullShadow) * 0.10;
-          col = mix(col, uDeep * 0.55, shadowBand * (1.0 - foam));
-          col = mix(col, uFoamColor, max(foam, splatFringe));
+          col = mix(col, uDeep * 0.55, hullShadow * 0.35 * (1.0 - foam));
+          col = mix(col, uFoamColor, foam * 0.9);
 
-          // --------------------------------------------------------------
-          // 4. Banded specular: two hard-stepped highlight levels.
-          // --------------------------------------------------------------
           vec3 H = normalize(uSunDir + V);
-          float spec = pow(max(dot(N, H), 0.0), 220.0);
-          float specBand = step(0.5, spec) * 0.85 + step(0.12, spec) * 0.25;
-          col += uSunColor * specBand * (1.0 - foam) * 0.5;
-
-          // --------------------------------------------------------------
-          // 5. Anime glitter: sparse cells flash as hard diamonds.
-          // --------------------------------------------------------------
-          vec2 cell = floor(vWorldPos.xz * 1.9);
-          float rnd = hash21(cell);
-          float tw = fract(rnd * 7.31 + uTime * (0.35 + rnd * 0.5));
-          float sparkleOn = step(0.986, rnd) * step(0.68, tw) * step(tw, 0.9);
-          vec2 cuv = fract(vWorldPos.xz * 1.9) - 0.5;
-          float diamond = step(abs(cuv.x) + abs(cuv.y), 0.17);
-          float upFace = smoothstep(0.86, 0.94, N.y);
-          // glitter is a near/mid-field garnish; kill it in the distance
-          float distFade = 1.0 - smoothstep(45.0, 85.0, dist);
-          float glit = sparkleOn * diamond * upFace * step(-0.2, vHeight) * distFade;
-          col = mix(col, uSparkle, glit * (1.0 - foam) * (1.0 - splatFringe) * 0.85);
+          float spec = pow(max(dot(N, H), 0.0), 256.0);
+          col += uSunColor * spec * (1.0 - foam) * 1.1;
+          // secondary broad glitter
+          float glint = pow(max(dot(N, H), 0.0), 48.0) * (0.15 + 0.85 * hash21(floor(vWorldPos.xz * 3.0)));
+          col += uSparkle * glint * (1.0 - foam) * 0.35;
 
           col = applyFog(col, dist);
           gl_FragColor = vec4(col, 1.0);
@@ -255,13 +215,13 @@ export class Ocean {
         varying vec3 vWorldPos;
         void main() {
           float dist = length(uCamPos - vWorldPos);
-          // flat far field sits at height 0 => mid band, faint noise bands
-          float bandNoise = (vnoise(vWorldPos.xz * 0.02 + uTime * 0.03) - 0.5) * 0.9;
-          vec3 col = mix(uDeep, uMid, step(-0.15, bandNoise));
+          float n = vnoise(vWorldPos.xz * 0.015 + uTime * 0.02);
+          vec3 col = mix(uDeep, uMid, 0.45 + n * 0.2);
           vec3 V = normalize(uCamPos - vWorldPos);
-          vec3 H = normalize(uSunDir + V);
-          float spec = pow(max(H.y, 0.0), 900.0);
-          col += uSunColor * step(0.35, spec) * 0.35;
+          float fres = pow(1.0 - clamp(V.y, 0.0, 1.0), 2.5);
+          col = mix(col, uHorizonColor, fres * 0.55);
+          float spec = pow(max(normalize(uSunDir + V).y, 0.0), 400.0);
+          col += uSunColor * spec * 0.45;
           col = applyFog(col, dist);
           gl_FragColor = vec4(col, 1.0);
         }

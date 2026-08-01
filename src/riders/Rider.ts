@@ -15,8 +15,7 @@
  */
 
 import * as THREE from "three";
-import { makeToonMaterial } from "../render/ToonMaterial";
-import { outlineHierarchy } from "../render/Outline";
+import { makeGlassMaterial, makeToonMaterial } from "../render/ToonMaterial";
 import type { BoatPhysics } from "../boats/BoatPhysics";
 import type { Livery } from "../boats/BoatMesh";
 
@@ -78,12 +77,19 @@ export class Rider {
     this.gripLLocal = gripL.position.clone().sub(seatAnchor.position);
     this.gripRLocal = gripR.position.clone().sub(seatAnchor.position);
 
-    const suit = makeToonMaterial({ color: livery.trim, specular: 0.35, rim: 0.75, shininess: 40 });
-    const suitLight = makeToonMaterial({ color: livery.deck, specular: 0.3, rim: 0.6 });
-    const skin = makeToonMaterial({ color: 0xf2b58c, specular: 0.15, rim: 0.5 });
-    const helmet = makeToonMaterial({ color: livery.hull, specular: 0.9, shininess: 130, rim: 0.9, matcap: 0.18 });
-    const visor = makeToonMaterial({ color: 0x2a3d66, specular: 1.0, shininess: 200, rim: 0.9, matcap: 0.5 });
-    const glove = makeToonMaterial({ color: 0x22284a, specular: 0.2, rim: 0.4 });
+    const suit = makeToonMaterial({ color: livery.trim, specular: 0.35, shininess: 40, roughness: 0.55, clearcoat: 0.4 });
+    const suitLight = makeToonMaterial({ color: livery.deck, specular: 0.3, roughness: 0.5, clearcoat: 0.25 });
+    const skin = makeToonMaterial({ color: 0xf2b58c, specular: 0.15, roughness: 0.78, metalness: 0 });
+    const helmet = makeToonMaterial({
+      color: livery.hull,
+      specular: 0.9,
+      shininess: 130,
+      metalness: 0.35,
+      roughness: 0.22,
+      clearcoat: 0.9,
+    });
+    const visor = makeGlassMaterial(0x2a3d66);
+    const glove = makeToonMaterial({ color: 0x22284a, specular: 0.2, roughness: 0.7, metalness: 0.05 });
 
     // ---------------- pelvis / torso / head ----------------
     this.pelvis.position.set(0, 0.12, 0);
@@ -154,13 +160,6 @@ export class Rider {
       knee.add(boot);
     }
 
-    // ink outlines for the whole character, slightly thinner than the boat
-    outlineHierarchy(this.group, { widthPx: 1.9 });
-    this.group.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh && !o.name.endsWith("_outline")) {
-        o.userData.noOutline = true; // boat pass must not re-outline us
-      }
-    });
   }
 
   // ------------------------------------------------------------------

@@ -6,7 +6,6 @@
 import * as THREE from "three";
 import { BoatPhysics } from "./BoatPhysics";
 import { buildBoatMesh, BoatMeshResult, Livery } from "./BoatMesh";
-import { outlineHierarchy } from "../render/Outline";
 import { BoatWakeEmitter } from "../water/FoamSplats";
 import { Rider } from "../riders/Rider";
 
@@ -39,9 +38,19 @@ export class Boat {
     this.group = this.meshParts.group;
     this.rider = new Rider(livery, this.meshParts.seatAnchor, this.meshParts.gripL, this.meshParts.gripR);
     this.group.add(this.rider.group);
-    outlineHierarchy(this.group, { widthPx: 2.4 });
+    this.group.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) {
+        m.castShadow = true;
+        m.receiveShadow = true;
+      }
+    });
     scene.add(this.group);
     this.syncVisual();
+  }
+
+  setHullColor(hex: number): void {
+    this.meshParts.setHullColor(hex);
   }
 
   /** copy the physics transform onto the mesh */

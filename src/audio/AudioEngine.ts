@@ -26,6 +26,8 @@ export class AudioEngine {
   private driftGain!: GainNode;
 
   private started = false;
+  muted = localStorage.getItem("inkwake_sfx_muted") === "1";
+  private masterVolume = 0.6;
 
   constructor() {
     const unlock = () => {
@@ -35,6 +37,16 @@ export class AudioEngine {
     };
     window.addEventListener("keydown", unlock);
     window.addEventListener("pointerdown", unlock);
+  }
+
+  setMuted(m: boolean): void {
+    this.muted = m;
+    localStorage.setItem("inkwake_sfx_muted", m ? "1" : "0");
+    if (this.master) this.master.gain.value = m ? 0 : this.masterVolume;
+  }
+
+  toggleMute(): void {
+    this.setMuted(!this.muted);
   }
 
   private noiseBuffer(ctx: AudioContext, seconds: number): AudioBuffer {
@@ -51,7 +63,7 @@ export class AudioEngine {
     this.ctx = ctx;
 
     this.master = ctx.createGain();
-    this.master.gain.value = 0.6;
+    this.master.gain.value = this.muted ? 0 : this.masterVolume;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -18;
     comp.ratio.value = 6;

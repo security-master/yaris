@@ -1,42 +1,157 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>InkWake GP</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
     <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        width: 100%; height: 100%; overflow: hidden;
+        background: #07101f;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #eef6ff;
       }
-      html,
-      body {
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #0a1430;
-      }
-      #app {
-        position: fixed;
-        inset: 0;
-      }
-      #app canvas {
-        display: block;
-      }
+      #app { position: fixed; inset: 0; }
+      #app canvas { display: block; }
       #hud {
-        position: fixed;
-        inset: 0;
-        width: 100%;
-        height: 100%;
+        position: fixed; inset: 0; width: 100%; height: 100%;
         pointer-events: none;
       }
+      #menu {
+        position: fixed; inset: 0; z-index: 20;
+        display: grid; place-items: center;
+        background:
+          radial-gradient(1200px 600px at 50% -10%, rgba(56,140,255,.35), transparent 60%),
+          linear-gradient(180deg, #0b1a33 0%, #07101f 100%);
+        padding: 24px; overflow: auto;
+      }
+      #menu[hidden] { display: none !important; }
+      .panel {
+        width: min(920px, 100%);
+        background: rgba(10, 18, 36, 0.82);
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 18px;
+        padding: 28px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 30px 80px rgba(0,0,0,.45);
+      }
+      .brand {
+        font-size: clamp(2rem, 5vw, 3rem);
+        font-weight: 900; font-style: italic;
+        letter-spacing: 0.02em;
+        color: #ffd23f;
+        text-shadow: 0 2px 0 #101a38;
+      }
+      .sub { opacity: 0.75; margin: 6px 0 22px; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 22px;
+      }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      .card {
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 14px;
+        padding: 16px;
+      }
+      .card h3 { font-size: 0.95rem; margin-bottom: 10px; color: #9fd0ff; }
+      .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+      button, select {
+        appearance: none; border: 0; border-radius: 10px;
+        padding: 10px 14px; font-weight: 700; cursor: pointer;
+        background: #1f6feb; color: white;
+      }
+      button.secondary { background: rgba(255,255,255,0.1); }
+      button.cta {
+        background: linear-gradient(90deg, #ff7a38, #ffd23f);
+        color: #101a38; font-size: 1.05rem; padding: 14px 22px;
+      }
+      .swatch {
+        width: 34px; height: 34px; border-radius: 50%;
+        border: 2px solid rgba(255,255,255,0.25);
+        padding: 0;
+      }
+      .swatch.active { outline: 2px solid #fff; outline-offset: 2px; }
+      ul.list { list-style: none; display: grid; gap: 6px; max-height: 180px; overflow: auto; }
+      ul.list li {
+        display: flex; justify-content: space-between; gap: 10px;
+        padding: 8px 10px; border-radius: 8px;
+        background: rgba(0,0,0,0.22); font-size: 0.9rem;
+      }
+      .muted { opacity: 0.55; }
+      .warn {
+        margin-top: 12px; padding: 10px 12px; border-radius: 10px;
+        background: rgba(255, 180, 40, 0.12); color: #ffd27a; font-size: 0.85rem;
+      }
+      select { background: #243656; min-width: 180px; }
     </style>
   </head>
   <body>
     <div id="app"></div>
     <canvas id="hud"></canvas>
+
+    <div id="menu">
+      <div class="panel">
+        <div class="brand">INKWAKE GP</div>
+        <div class="sub">Gerçekçi açık deniz yarışı · 3 tur · Google ile kaydet</div>
+        <div class="grid">
+          <div>
+            <div class="card" style="margin-bottom:14px">
+              <h3>Hesap</h3>
+              <div data-guest class="row">
+                <button type="button" data-action="google">Google ile giriş</button>
+                <span class="muted">Liderlik ve geçmiş için</span>
+              </div>
+              <div data-authed hidden class="row">
+                <strong data-username>Pilot</strong>
+                <button type="button" class="secondary" data-action="signout">Çıkış</button>
+              </div>
+              <div class="warn" data-supabase-warn hidden>
+                Supabase env eksik: Vercel’de <code>VITE_SUPABASE_URL</code> ve
+                <code>VITE_SUPABASE_ANON_KEY</code> tanımla; SQL migration’ı çalıştır.
+              </div>
+            </div>
+
+            <div class="card" style="margin-bottom:14px">
+              <h3>Tekne rengi</h3>
+              <div class="row" data-colors></div>
+            </div>
+
+            <div class="card" style="margin-bottom:14px">
+              <h3>Ses &amp; müzik</h3>
+              <div class="row">
+                <select data-music></select>
+                <button type="button" class="secondary" data-action="mute-music">Müzik: Açık</button>
+                <button type="button" class="secondary" data-action="mute-sfx">SFX: Açık</button>
+              </div>
+              <p class="muted" style="margin-top:8px;font-size:.8rem">
+                Müzikler Web Audio ile üretilir — telifsiz, harici dosya yok.
+              </p>
+            </div>
+
+            <div class="row">
+              <button type="button" class="cta" data-action="start">Yarışa Başla</button>
+              <span class="muted">↑ gaz · ← → direksiyon · SPACE drift</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" style="margin-bottom:14px">
+              <h3>Liderlik (en iyi bitiş)</h3>
+              <ul class="list" data-leaderboard></ul>
+            </div>
+            <div class="card">
+              <h3>Yarışlarım / turlar</h3>
+              <ul class="list" data-my-races></ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
