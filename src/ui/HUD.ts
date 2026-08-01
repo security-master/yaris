@@ -177,7 +177,7 @@ export class HUD {
     c.roundRect(W / 2 - 280, H * 0.86, 560, 42, 12);
     c.fill();
     c.restore();
-    this.inkText("↑ throttle    ← → steer    SPACE drift & boost", W / 2, H * 0.86 + 29, 20, PAPER, "center", false);
+    this.inkText("↑ start / throttle    ← → steer    SPACE drift & boost", W / 2, H * 0.86 + 29, 20, PAPER, "center", false);
   }
 
   /** anime speed lines rushing in from the screen edges at high speed */

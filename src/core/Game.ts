@@ -211,6 +211,10 @@ export class Game {
     switch (this.state) {
       case "countdown": {
         this.countdown -= dt;
+        // Enter or throttle skips the rest of the countdown
+        if (this.input.confirmPressed || this.input.throttle > 0.5) {
+          this.countdown = Math.min(this.countdown, 0);
+        }
         const beep = Math.ceil(this.countdown);
         if (beep < this.lastCountdownBeep && beep >= 1 && beep <= 3) {
           this.lastCountdownBeep = beep;

@@ -40,12 +40,15 @@ export class PostPipeline {
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, camera));
 
+    // Pass null for RT textures here — ShaderPass clones uniforms via
+    // UniformsUtils.clone, which cannot clone render-target textures.
+    // We bind them after construction (and again each frame).
     this.edgePass = new ShaderPass({
       name: "InkEdgePass",
       uniforms: {
         tDiffuse: { value: null },
-        tNormal: { value: this.normalRT.texture },
-        tDepth: { value: this.normalRT.depthTexture },
+        tNormal: { value: null },
+        tDepth: { value: null },
         uResolution: { value: new THREE.Vector2(size.x, size.y) },
         uInk: { value: new THREE.Color(Palette.ink) },
         uCameraNear: { value: 0.3 },
@@ -151,6 +154,8 @@ export class PostPipeline {
     scene.overrideMaterial = prevOverride;
     scene.background = prevBackground;
 
+    this.edgePass.uniforms.tNormal.value = this.normalRT.texture;
+    this.edgePass.uniforms.tDepth.value = this.normalRT.depthTexture;
     this.edgePass.uniforms.uCameraNear.value = camera.near;
     this.edgePass.uniforms.uCameraFar.value = camera.far;
 
