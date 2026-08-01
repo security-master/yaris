@@ -46,9 +46,9 @@ export class Boat {
   private syncTransform(): void {
     const s = this.physics.state;
     this.group.position.copy(s.position);
-    this.group.rotation.order = 'YXZ';
-    this.group.rotation.y = -s.yaw + Math.PI / 2;
-    this.group.rotation.x = s.pitch;
-    this.group.rotation.z = s.roll;
+    this.group.rotation.order = 'YZX';
+    this.group.rotation.y = -s.yaw;
+    this.group.rotation.z = s.pitch;
+    this.group.rotation.x = s.roll;
   }
 }
