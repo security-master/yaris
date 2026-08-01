@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+.netlify
+artifacts/screenshots
+test-results
+playwright-report
+*.log
+.vite

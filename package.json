@@ -1,0 +1,22 @@
+{
+  "name": "cel-boat-racer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "screenshot": "playwright test harness/screenshot.spec.ts",
+    "screenshot:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "three": "^0.172.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0",
+    "@types/three": "^0.172.0",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  }
+}
