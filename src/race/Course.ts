@@ -118,12 +118,16 @@ export class Course {
         uTime: { value: 0 },
         uColor: { value: new THREE.Color(Palette.raceGreen) },
         uCamPos: { value: new THREE.Vector3() },
+        // xz positions of the 4 boats; ribbon fades near hulls so the
+        // green never washes over the boats themselves
+        uBoats: { value: [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()] },
       },
       vertexShader: /* glsl */ `
         ${glslWaveChunk()}
         uniform float uTime;
         varying vec2 vUv;
         varying float vDist;
+        varying vec2 vWorld;
         void main() {
           vUv = uv;
           vec3 base = position;
@@ -137,7 +141,8 @@ export class Course {
             q += base.xz - (q + d.xz);
           }
           vec3 disp = gerstner(q, uTime, 1.0, nrm);
-          vec3 wp = vec3(base.x, disp.y + 0.3, base.z);
+          vec3 wp = vec3(base.x, disp.y + 0.14, base.z);
+          vWorld = wp.xz;
           vec4 mv = viewMatrix * vec4(wp, 1.0);
           vDist = -mv.z;
           gl_Position = projectionMatrix * mv;
@@ -146,8 +151,10 @@ export class Course {
       fragmentShader: /* glsl */ `
         uniform float uTime;
         uniform vec3 uColor;
+        uniform vec2 uBoats[4];
         varying vec2 vUv;
         varying float vDist;
+        varying vec2 vWorld;
         void main() {
           // scrolling chevron arrows pointing along the direction of travel
           float lane = abs(vUv.x - 0.5) * 2.0; // 0 centre, 1 edge
@@ -159,6 +166,11 @@ export class Course {
           // pulse so the line reads as energy, not paint
           alpha *= 0.85 + 0.15 * sin(uTime * 2.4);
           alpha *= 1.0 - smoothstep(220.0, 380.0, vDist);
+          // fade out under/around each boat
+          for (int i = 0; i < 4; i++) {
+            float bd = length(vWorld - uBoats[i]);
+            alpha *= smoothstep(2.4, 5.5, bd);
+          }
           vec3 col = mix(uColor, vec3(1.0), arrow * 0.45);
           gl_FragColor = vec4(col, alpha);
         }
@@ -249,6 +261,16 @@ export class Course {
   }
 
   private _n = new THREE.Vector3();
+
+  /** Push current boat positions into the ribbon's fade uniforms. */
+  setBoatPositions(positions: THREE.Vector3[]): void {
+    const arr = this.ribbonMat.uniforms.uBoats.value as THREE.Vector2[];
+    for (let i = 0; i < arr.length; i++) {
+      const p = positions[i];
+      if (p) arr[i].set(p.x, p.z);
+      else arr[i].set(1e6, 1e6);
+    }
+  }
 
   /** Gates ride the waves: sample height + tilt with the surface normal. */
   update(time: number, camera: THREE.Camera): void {

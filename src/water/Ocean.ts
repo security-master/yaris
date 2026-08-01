@@ -155,8 +155,10 @@ export class Ocean {
 
           // Fresnel band: grazing angles flip to a lighter tone in one
           // hard step, so distant water reads bright like anime cels.
+          // Noise on the threshold keeps the band edge organic instead of
+          // tracing hard polygonal contours across the mesh.
           float fres = 1.0 - clamp(dot(N, V), 0.0, 1.0);
-          col = mix(col, uLight, step(0.72, fres) * 0.65);
+          col = mix(col, uLight, step(0.72 + bandNoise * 0.28, fres) * 0.65);
 
           // --------------------------------------------------------------
           // 2. Crest foam: appears above a height threshold, broken up by

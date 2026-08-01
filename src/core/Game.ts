@@ -277,10 +277,15 @@ export class Game {
   }
 
   private updateVisuals(dt: number): void {
-    for (const b of this.boats) b.update(dt);
+    for (let i = 0; i < this.boats.length; i++) {
+      const b = this.boats[i];
+      b.celebrating = this.race.racers[i]?.finished ?? false;
+      b.update(dt, this.time);
+    }
     this.chase.update(dt, this.time, this.chaseTarget());
     this.ocean.update(this.time, this.chase.camera);
     this.sky.update(this.time, this.chase.camera);
+    this.course.setBoatPositions(this.boats.map((b) => b.physics.position));
     this.course.update(this.time, this.chase.camera);
   }
 

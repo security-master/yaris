@@ -8,6 +8,7 @@ import { BoatPhysics } from "./BoatPhysics";
 import { buildBoatMesh, BoatMeshResult, Livery } from "./BoatMesh";
 import { outlineHierarchy } from "../render/Outline";
 import { BoatWakeEmitter } from "../water/FoamSplats";
+import { Rider } from "../riders/Rider";
 
 export class Boat {
   readonly physics: BoatPhysics;
@@ -17,6 +18,9 @@ export class Boat {
   readonly index: number;
   readonly isPlayer: boolean;
   readonly wake = new BoatWakeEmitter();
+  readonly rider: Rider;
+  /** set by Game when this boat finishes the race */
+  celebrating = false;
 
   constructor(
     scene: THREE.Scene,
@@ -33,6 +37,8 @@ export class Boat {
     this.physics = new BoatPhysics(x, z, yaw);
     this.meshParts = buildBoatMesh(livery);
     this.group = this.meshParts.group;
+    this.rider = new Rider(livery, this.meshParts.seatAnchor, this.meshParts.gripL, this.meshParts.gripR);
+    this.group.add(this.rider.group);
     outlineHierarchy(this.group, { widthPx: 2.4 });
     scene.add(this.group);
     this.syncVisual();
@@ -44,7 +50,8 @@ export class Boat {
     this.group.quaternion.copy(this.physics.quaternion);
   }
 
-  update(dt: number): void {
+  update(dt: number, time: number): void {
     this.syncVisual();
+    this.rider.update(dt, { phys: this.physics, time, celebrating: this.celebrating });
   }
 }
