@@ -44,6 +44,18 @@ npm run screenshot           # writes artifacts/screenshots/*.png
 
 Harness drives `window.__CEL_RACER__` (camera modes, race seek, forced time) and captures retina frames.
 
-## Quality notes
+## Quality notes (honest)
 
-This is a finished playable game, not a tech demo. Subsystems still have honest headroom (foam persistence, rider silhouette refinement, edge-pass tuning) — see the PR description for the current critic scorecard.
+Playable end-to-end and visually NPR-committed. Current critic scorecard vs the Guilty Gear / Wave Race bar:
+
+| Subsystem | ~% | Notes |
+|-----------|----|-------|
+| Water | ~75% | Gerstner + bands + foam/wake work; still reads faceted up close |
+| Cel / outlines / sky | ~78% | Ramp + hull outlines + cloud cards + sun; Sobel interior lines subtle |
+| Boat feel | ~75% | Buoyancy + drift/boost/airtime; payoff can be juicier |
+| AI / race | ~72% | Personalities + laps/gates; rubber-band needs live playtesting |
+| Riders | ~65% | Posed & leaning, still low-poly vs character-art bar |
+| HUD / audio | ~75% | On-palette and functional; results screen is utilitarian |
+| Perf | ~70% | Adaptive DPR + instancing; not yet profiled on M5 Pro |
+
+Visual QA: `npm run screenshot` → `artifacts/screenshots/`.

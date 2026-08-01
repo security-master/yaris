@@ -91,7 +91,7 @@ export class Rider {
 
     this.root.add(this.makeHandlebars(barMat, glove));
 
-    this.outlines = addInvertedHullOutlines(this.root, 0.95);
+    this.outlines = addInvertedHullOutlines(this.root, 1.35);
     for (const outline of this.outlines) outline.userData.celShaded = true;
   }
 

@@ -13,7 +13,7 @@ void main() {
   vNormal = normalize(normalMatrix * normal);
   vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   // Screen-space constant line width: scale push by w (perspective)
-  float distScale = clip.w * uWidth * 0.0022;
+  float distScale = clip.w * uWidth * 0.0034;
   vec3 pushed = position + normal * distScale;
   gl_Position = projectionMatrix * modelViewMatrix * vec4(pushed, 1.0);
 }

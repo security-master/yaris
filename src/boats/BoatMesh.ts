@@ -250,7 +250,7 @@ export function createBoatVisual(hullColor: THREE.ColorRepresentation, accent: T
     group.add(fin);
   }
 
-  const outlines = addInvertedHullOutlines(group, 1.2);
+  const outlines = addInvertedHullOutlines(group, 1.55);
   for (const outline of outlines) outline.userData.celShaded = true;
   return { group, outlines, hull };
 }

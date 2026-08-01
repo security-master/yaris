@@ -14,15 +14,15 @@ export interface WaveParam {
 }
 
 export const WAVE_PARAMS: WaveParam[] = [
-  // Long swell — airtime section rides these
-  { dirX: 0.92, dirZ: 0.38, amplitude: 1.55, wavelength: 48, speed: 1.35, steepness: 0.55 },
-  { dirX: -0.35, dirZ: 0.94, amplitude: 1.1, wavelength: 36, speed: 1.15, steepness: 0.5 },
+  // Long swell — airtime section rides these (slightly calmer for silhouette readability)
+  { dirX: 0.92, dirZ: 0.38, amplitude: 1.25, wavelength: 52, speed: 1.25, steepness: 0.48 },
+  { dirX: -0.35, dirZ: 0.94, amplitude: 0.9, wavelength: 38, speed: 1.1, steepness: 0.45 },
   // Mid chop
-  { dirX: 0.7, dirZ: -0.7, amplitude: 0.45, wavelength: 16, speed: 1.8, steepness: 0.7 },
-  { dirX: -0.85, dirZ: -0.52, amplitude: 0.35, wavelength: 11, speed: 2.1, steepness: 0.75 },
+  { dirX: 0.7, dirZ: -0.7, amplitude: 0.38, wavelength: 17, speed: 1.7, steepness: 0.62 },
+  { dirX: -0.85, dirZ: -0.52, amplitude: 0.28, wavelength: 12, speed: 2.0, steepness: 0.65 },
   // Fine chop
-  { dirX: 0.2, dirZ: 0.98, amplitude: 0.14, wavelength: 6.5, speed: 2.6, steepness: 0.72 },
-  { dirX: 0.95, dirZ: -0.3, amplitude: 0.08, wavelength: 4.2, speed: 3.0, steepness: 0.76 },
+  { dirX: 0.2, dirZ: 0.98, amplitude: 0.12, wavelength: 7.0, speed: 2.5, steepness: 0.68 },
+  { dirX: 0.95, dirZ: -0.3, amplitude: 0.07, wavelength: 4.5, speed: 2.9, steepness: 0.7 },
 ];
 
 export interface WaveSample {
@@ -97,12 +97,12 @@ struct Wave {
 };
 
 const Wave WAVES[6] = Wave[6](
-  Wave(vec2(0.92, 0.38), 1.55, 48.0, 1.35, 0.55),
-  Wave(vec2(-0.35, 0.94), 1.10, 36.0, 1.15, 0.50),
-  Wave(vec2(0.70, -0.70), 0.45, 16.0, 1.80, 0.70),
-  Wave(vec2(-0.85, -0.52), 0.35, 11.0, 2.10, 0.75),
-  Wave(vec2(0.20, 0.98), 0.14, 6.50, 2.60, 0.72),
-  Wave(vec2(0.95, -0.30), 0.08, 4.20, 3.00, 0.76)
+  Wave(vec2(0.92, 0.38), 1.25, 52.0, 1.25, 0.48),
+  Wave(vec2(-0.35, 0.94), 0.90, 38.0, 1.10, 0.45),
+  Wave(vec2(0.70, -0.70), 0.38, 17.0, 1.70, 0.62),
+  Wave(vec2(-0.85, -0.52), 0.28, 12.0, 2.00, 0.65),
+  Wave(vec2(0.20, 0.98), 0.12, 7.00, 2.50, 0.68),
+  Wave(vec2(0.95, -0.30), 0.07, 4.50, 2.90, 0.70)
 );
 
 void gerstnerDisplace(vec3 pos, float t, out vec3 displaced, out vec3 normal, out float crest) {
@@ -125,7 +125,7 @@ void gerstnerDisplace(vec3 pos, float t, out vec3 displaced, out vec3 normal, ou
     dYdX += dir.x * k * a * c;
     dYdZ += dir.y * k * a * c;
     float crestW = i < 2 ? 0.55 : 0.2;
-    crest += max(0.0, s) * (a / 1.55) * crestW;
+    crest += max(0.0, s) * (a / 1.25) * crestW;
   }
   displaced = pos + d;
   normal = normalize(vec3(-dYdX, 1.0, -dYdZ));

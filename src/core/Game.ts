@@ -97,6 +97,11 @@ export class Game {
       if (e.code === 'KeyR' && this.race.phase === 'finished') this.restart();
     });
     window.addEventListener('pointerdown', () => this.audio.resume());
+
+    // Drop straight into a race — title flash then countdown.
+    window.setTimeout(() => {
+      if (this.race.phase === 'idle') this.beginRace();
+    }, 900);
   }
 
   private spawnBoats(): void {
