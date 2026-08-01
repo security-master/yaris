@@ -4,7 +4,7 @@
  */
 import * as THREE from 'three';
 import { Palette } from '../palette';
-import { sampleGerstner } from './gerstner';
+import { sampleGerstner, type WaveSample } from './gerstner';
 
 interface WakePoint {
   x: number;
@@ -23,31 +23,108 @@ interface Spray {
 
 const MAX_WAKE = 180;
 const MAX_SPRAY = 120;
+const MAX_WAKE_SEGMENTS = 400;
+const WAKE_LIFETIME = 3.2;
+const WAKE_SURFACE_OFFSET = 0.075;
+
+const wakeVert = /* glsl */ `
+attribute float aAlpha;
+attribute float aSide;
+attribute float aFlow;
+
+varying float vAlpha;
+varying float vSide;
+varying float vFlow;
+varying vec3 vWorldPos;
+
+void main() {
+  vAlpha = aAlpha;
+  vSide = aSide;
+  vFlow = aFlow;
+  vec4 worldPos = modelMatrix * vec4(position, 1.0);
+  vWorldPos = worldPos.xyz;
+  gl_Position = projectionMatrix * viewMatrix * worldPos;
+}
+`;
+
+const wakeFrag = /* glsl */ `
+uniform vec3 uFoam;
+uniform float uTime;
+
+varying float vAlpha;
+varying float vSide;
+varying float vFlow;
+varying vec3 vWorldPos;
+
+float hash21(vec2 p) {
+  return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+void main() {
+  float side = abs(vSide);
+  float edgeSeed = hash21(floor(vWorldPos.xz * 1.4 + vec2(floor(vFlow * 0.21), 0.0)));
+  float raggedWidth = 0.70 + edgeSeed * 0.24;
+  float sideMask = step(side, raggedWidth);
+
+  float movingStripe = step(0.52, fract(vFlow * 0.95 - uTime * 2.1));
+  float fleck = step(0.24, hash21(floor(vWorldPos.xz * 2.1) + floor(uTime * 5.0)));
+  float coreRibbon = step(side, 0.38);
+  float foamMask = sideMask * max(coreRibbon, movingStripe * fleck);
+
+  float alpha = floor(clamp(vAlpha, 0.0, 1.0) * 4.0) * 0.25;
+  if (foamMask < 0.5 || alpha <= 0.0) discard;
+  gl_FragColor = vec4(uFoam, alpha);
+}
+`;
 
 export class FoamWake {
   readonly group = new THREE.Group();
   private wakeGeo: THREE.BufferGeometry;
   private wakePos: Float32Array;
-  private wakeCol: Float32Array;
+  private wakeAlpha: Float32Array;
+  private wakeSide: Float32Array;
+  private wakeFlow: Float32Array;
   private wakeMesh: THREE.Mesh;
-  private points: WakePoint[] = [];
+  private readonly trails: WakePoint[][];
+  private emitSlot = 0;
+  private readonly maxTrailPoints: number;
   private sprays: Spray[] = [];
   private sprayMesh: THREE.InstancedMesh;
   private sprayDummy = new THREE.Object3D();
   private ringMeshes: THREE.Mesh[] = [];
+  private wakeSample: WaveSample = {
+    height: 0,
+    dispX: 0,
+    dispZ: 0,
+    normal: new THREE.Vector3(0, 1, 0),
+    crest: 0,
+  };
 
   constructor(boatCount = 4) {
+    const trailCount = Math.max(1, boatCount);
+    this.trails = Array.from({ length: trailCount }, () => []);
+    this.maxTrailPoints = Math.max(8, Math.floor(MAX_WAKE / trailCount));
+
     // Wake ribbon as triangle strip-ish ribbon via BufferGeometry quads
-    this.wakePos = new Float32Array(MAX_WAKE * 2 * 3 * 3); // quads as 2 tris
-    this.wakeCol = new Float32Array(MAX_WAKE * 2 * 3 * 3);
+    this.wakePos = new Float32Array(MAX_WAKE_SEGMENTS * 2 * 3 * 3); // quads as 2 tris
+    this.wakeAlpha = new Float32Array(MAX_WAKE_SEGMENTS * 2 * 3);
+    this.wakeSide = new Float32Array(MAX_WAKE_SEGMENTS * 2 * 3);
+    this.wakeFlow = new Float32Array(MAX_WAKE_SEGMENTS * 2 * 3);
     this.wakeGeo = new THREE.BufferGeometry();
     this.wakeGeo.setAttribute('position', new THREE.BufferAttribute(this.wakePos, 3));
-    this.wakeGeo.setAttribute('color', new THREE.BufferAttribute(this.wakeCol, 3));
+    this.wakeGeo.setAttribute('aAlpha', new THREE.BufferAttribute(this.wakeAlpha, 1));
+    this.wakeGeo.setAttribute('aSide', new THREE.BufferAttribute(this.wakeSide, 1));
+    this.wakeGeo.setAttribute('aFlow', new THREE.BufferAttribute(this.wakeFlow, 1));
+    this.wakeGeo.setDrawRange(0, 0);
 
-    const wakeMat = new THREE.MeshBasicMaterial({
-      vertexColors: true,
+    const wakeMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uFoam: { value: new THREE.Color(Palette.foam) },
+        uTime: { value: 0 },
+      },
+      vertexShader: wakeVert,
+      fragmentShader: wakeFrag,
       transparent: true,
-      opacity: 0.9,
       depthWrite: false,
       side: THREE.DoubleSide,
     });
@@ -59,11 +136,11 @@ export class FoamWake {
     // Hull foam rings
     for (let i = 0; i < boatCount; i++) {
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(1.2, 2.4, 24),
+        new THREE.RingGeometry(1.05, 1.65, 18),
         new THREE.MeshBasicMaterial({
           color: Palette.foam,
           transparent: true,
-          opacity: 0.55,
+          opacity: 0.18,
           depthWrite: false,
           side: THREE.DoubleSide,
         }),
@@ -90,18 +167,32 @@ export class FoamWake {
   }
 
   emitWake(x: number, z: number, heading: number, speed: number, strength: number): void {
+    const trail = this.trails[this.emitSlot];
+    this.emitSlot = (this.emitSlot + 1) % this.trails.length;
     if (speed < 2 || strength < 0.05) return;
     const side = Math.sin(heading);
     const fwd = Math.cos(heading);
+    const wakeX = x - fwd * 2.2;
+    const wakeZ = z - side * 2.2;
+    const last = trail[trail.length - 1];
+    const width = 0.65 + Math.min(speed * 0.055, 1.55);
+    const wakeStrength = THREE.MathUtils.clamp(strength, 0, 1);
+
+    if (last && Math.hypot(last.x - wakeX, last.z - wakeZ) < 0.42) {
+      last.width = Math.max(last.width, width);
+      last.strength = Math.max(last.strength, wakeStrength);
+      return;
+    }
+
     // Emit behind boat
-    this.points.push({
-      x: x - fwd * 2.2,
-      z: z - side * 2.2,
+    trail.push({
+      x: wakeX,
+      z: wakeZ,
       age: 0,
-      width: 0.8 + Math.min(speed * 0.08, 2.2),
-      strength,
+      width,
+      strength: wakeStrength,
     });
-    if (this.points.length > MAX_WAKE) this.points.shift();
+    while (trail.length > this.maxTrailPoints) trail.shift();
   }
 
   emitSpray(origin: THREE.Vector3, amount: number, heading: number): void {
@@ -122,69 +213,82 @@ export class FoamWake {
     const ring = this.ringMeshes[index];
     if (!ring) return;
     const sample = sampleGerstner(x, z, t);
-    ring.position.set(x + sample.dispX, sample.height + 0.08, z + sample.dispZ);
-    const scale = 1.3 + Math.min(speed * 0.06, 1.8);
+    ring.visible = speed > 1.2;
+    ring.position.set(x + sample.dispX, sample.height + 0.055, z + sample.dispZ);
+    const scale = 1.05 + Math.min(speed * 0.045, 1.15);
     ring.scale.setScalar(scale);
     const mat = ring.material as THREE.MeshBasicMaterial;
-    mat.opacity = THREE.MathUtils.clamp(0.25 + speed * 0.03, 0.2, 0.7);
+    mat.opacity = THREE.MathUtils.clamp(0.1 + speed * 0.012, 0.1, 0.28);
   }
 
   update(dt: number, t: number): void {
-    // Age wake
-    for (const p of this.points) {
-      p.age += dt;
-      p.width += dt * 1.8;
-      p.strength *= 1 - dt * 0.55;
-    }
-    this.points = this.points.filter((p) => p.age < 3.5 && p.strength > 0.04);
+    this.emitSlot = 0;
 
-    // Rebuild wake mesh as paired quads along trail
+    // Age wake
+    for (const trail of this.trails) {
+      for (const p of trail) {
+        p.age += dt;
+        p.width += dt * 2.0;
+        p.strength *= Math.max(0, 1 - dt * 0.65);
+      }
+      let write = 0;
+      for (const p of trail) {
+        if (p.age < WAKE_LIFETIME && p.strength > 0.035) trail[write++] = p;
+      }
+      trail.length = write;
+    }
+
+    const wakeMat = this.wakeMesh.material as THREE.ShaderMaterial;
+    wakeMat.uniforms.uTime.value = t;
+
+    // Rebuild wake mesh as paired quads along each boat trail.
     let vi = 0;
-    let ci = 0;
-    const foam = new THREE.Color(Palette.foam);
-    for (let i = 0; i < this.points.length - 1; i++) {
-      const a = this.points[i];
-      const b = this.points[i + 1];
-      const sa = sampleGerstner(a.x, a.z, t);
-      const sb = sampleGerstner(b.x, b.z, t);
-      const ax = a.x + sa.dispX;
-      const az = a.z + sa.dispZ;
-      const bx = b.x + sb.dispX;
-      const bz = b.z + sb.dispZ;
-      const ay = sa.height + 0.06;
-      const by = sb.height + 0.06;
-      const dx = bx - ax;
-      const dz = bz - az;
-      const len = Math.hypot(dx, dz) || 1;
-      const px = -dz / len;
-      const pz = dx / len;
-      const wa = a.width * 0.5;
-      const wb = b.width * 0.5;
-      // quad
-      const verts = [
-        ax - px * wa, ay, az - pz * wa,
-        ax + px * wa, ay, az + pz * wa,
-        bx + px * wb, by, bz + pz * wb,
-        ax - px * wa, ay, az - pz * wa,
-        bx + px * wb, by, bz + pz * wb,
-        bx - px * wb, by, bz - pz * wb,
-      ];
-      for (let k = 0; k < verts.length; k++) this.wakePos[vi++] = verts[k];
-      const alphaA = a.strength;
-      const alphaB = b.strength;
-      for (let k = 0; k < 6; k++) {
-        const al = k < 3 ? alphaA : alphaB;
-        this.wakeCol[ci++] = foam.r * al;
-        this.wakeCol[ci++] = foam.g * al;
-        this.wakeCol[ci++] = foam.b * al;
+    let ai = 0;
+    let segmentCount = 0;
+    const writeWakeVertex = (x: number, z: number, side: number, flow: number, alpha: number): void => {
+      const sample = sampleGerstner(x, z, t, this.wakeSample);
+      this.wakePos[vi++] = x + sample.dispX;
+      this.wakePos[vi++] = sample.height + WAKE_SURFACE_OFFSET;
+      this.wakePos[vi++] = z + sample.dispZ;
+      this.wakeAlpha[ai] = alpha;
+      this.wakeSide[ai] = side;
+      this.wakeFlow[ai] = flow;
+      ai++;
+    };
+
+    for (const trail of this.trails) {
+      for (let i = 0; i < trail.length - 1 && segmentCount < MAX_WAKE_SEGMENTS; i++) {
+        const a = trail[i];
+        const b = trail[i + 1];
+        const dx = b.x - a.x;
+        const dz = b.z - a.z;
+        const dist = Math.hypot(dx, dz);
+        if (dist < 0.05 || dist > 14) continue;
+
+        const px = -dz / dist;
+        const pz = dx / dist;
+        const wa = a.width * 0.5;
+        const wb = b.width * 0.5;
+        const alphaA = THREE.MathUtils.clamp(a.strength * (1 - a.age / WAKE_LIFETIME), 0, 1);
+        const alphaB = THREE.MathUtils.clamp(b.strength * (1 - b.age / WAKE_LIFETIME), 0, 1);
+        const flowA = a.age * 5.0 + i;
+        const flowB = b.age * 5.0 + i + 1;
+
+        writeWakeVertex(a.x - px * wa, a.z - pz * wa, -1, flowA, alphaA);
+        writeWakeVertex(a.x + px * wa, a.z + pz * wa, 1, flowA, alphaA);
+        writeWakeVertex(b.x + px * wb, b.z + pz * wb, 1, flowB, alphaB);
+        writeWakeVertex(a.x - px * wa, a.z - pz * wa, -1, flowA, alphaA);
+        writeWakeVertex(b.x + px * wb, b.z + pz * wb, 1, flowB, alphaB);
+        writeWakeVertex(b.x - px * wb, b.z - pz * wb, -1, flowB, alphaB);
+        segmentCount++;
       }
     }
-    // Zero rest
-    for (let i = vi; i < this.wakePos.length; i++) this.wakePos[i] = 0;
-    for (let i = ci; i < this.wakeCol.length; i++) this.wakeCol[i] = 0;
     (this.wakeGeo.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (this.wakeGeo.attributes.color as THREE.BufferAttribute).needsUpdate = true;
-    this.wakeGeo.computeBoundingSphere();
+    (this.wakeGeo.attributes.aAlpha as THREE.BufferAttribute).needsUpdate = true;
+    (this.wakeGeo.attributes.aSide as THREE.BufferAttribute).needsUpdate = true;
+    (this.wakeGeo.attributes.aFlow as THREE.BufferAttribute).needsUpdate = true;
+    this.wakeGeo.setDrawRange(0, ai);
+    if (ai > 0) this.wakeGeo.computeBoundingSphere();
 
     // Spray
     let alive = 0;

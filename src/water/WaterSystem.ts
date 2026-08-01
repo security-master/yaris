@@ -70,33 +70,37 @@ void main() {
 
   // Quantized diffuse (2–3 bands on water)
   float ndl = max(dot(n, l), 0.0);
-  float shade = 0.65;
+  float shade = 0.72;
   if (ndl > 0.55) shade = 1.0;
   else if (ndl > 0.25) shade = 0.82;
   col *= shade;
 
-  // Crest foam — hard white above threshold
-  float crestFoam = step(0.62, vCrest);
-  // Secondary chop foam
-  crestFoam = max(crestFoam, step(0.85, vCrest) );
-  col = mix(col, uFoam, crestFoam * 0.92);
+  // Crest foam — hard white only at high, lit wave tips.
+  float crestFoam = step(0.78, vCrest) * step(0.42, h);
+  col = mix(col, uFoam, crestFoam * 0.96);
 
   // Fresnel rim (banded)
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
   fres = step(0.35, fres) * 0.4 + step(0.65, fres) * 0.35;
   col += uShallow * fres * 0.35;
 
-  // Anime sparkle — quantized glitter, animated
-  vec2 sp = floor(vWorldPos.xz * 1.8 + vec2(uTime * 2.5, uTime * -1.7));
-  float spark = hash21(sp);
-  float sparkMask = step(0.93, spark) * step(0.4, ndl) * (1.0 - crestFoam);
-  // twinkle on/off
-  float tw = step(0.5, fract(spark * 7.13 + uTime * 3.0));
-  col += uSparkle * sparkMask * tw;
+  // Anime sparkle — sparse hard on/off star glints on lit faces.
+  vec2 sparkGrid = vWorldPos.xz * 0.7;
+  vec2 sp = floor(sparkGrid);
+  vec2 cell = fract(sparkGrid) - 0.5;
+  float sparkSeed = hash21(sp);
+  float sparkPick = step(0.987, sparkSeed);
+  float litFace = step(0.64, ndl) * step(0.1, h);
+  float tw = step(0.62, fract(sparkSeed * 17.13 + floor(uTime * 9.0) * 0.37));
+  float starCore = step(abs(cell.x) + abs(cell.y), 0.055);
+  float starSlash = step(abs(cell.x - cell.y), 0.018) * step(abs(cell.x + cell.y), 0.24);
+  float starBackslash = step(abs(cell.x + cell.y), 0.018) * step(abs(cell.x - cell.y), 0.24);
+  float star = max(starCore, max(starSlash, starBackslash));
+  col += uSparkle * star * sparkPick * litFace * tw * (1.0 - crestFoam) * 1.45;
 
   // Depth-ish darkening far from camera (banded)
   float dist = length(cameraPosition.xz - vWorldPos.xz);
-  float farBand = step(120.0, dist) * 0.12 + step(220.0, dist) * 0.15;
+  float farBand = step(140.0, dist) * 0.08 + step(260.0, dist) * 0.08;
   col *= (1.0 - farBand);
 
   gl_FragColor = vec4(col, 1.0);
@@ -109,18 +113,18 @@ export class WaterSystem {
   private readonly gridSize: number;
   private readonly segments: number;
 
-  constructor(gridSize = 420, segments = 180) {
+  constructor(gridSize = 420, segments = 200) {
     this.gridSize = gridSize;
-    this.segments = segments;
+    this.segments = Math.max(segments, 200);
 
-    const geo = new THREE.PlaneGeometry(gridSize, gridSize, segments, segments);
+    const geo = new THREE.PlaneGeometry(gridSize, gridSize, this.segments, this.segments);
     geo.rotateX(-Math.PI / 2);
 
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uTime: { value: 0 },
         uCameraPos: { value: new THREE.Vector3() },
-        uDeep: { value: new THREE.Color(Palette.waterDeep) },
+        uDeep: { value: new THREE.Color(0x0d4f66) },
         uMid: { value: new THREE.Color(Palette.waterMid) },
         uShallow: { value: new THREE.Color(Palette.waterShallow) },
         uCrest: { value: new THREE.Color(Palette.waterCrest) },
