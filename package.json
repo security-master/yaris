@@ -1,0 +1,23 @@
+{
+  "name": "inkwake-gp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "InkWake GP - a cel-shaded arcade boat racing game. Zero external assets: every mesh, texture and sound is generated in code.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "shots": "node tools/screenshot.mjs"
+  },
+  "dependencies": {
+    "three": "^0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "^0.185.3",
+    "playwright": "^1.62.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0"
+  }
+}
