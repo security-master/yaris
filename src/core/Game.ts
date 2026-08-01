@@ -13,6 +13,7 @@ import { FoamSplats } from "../water/FoamSplats";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
 import { OUTLINE_RESOLUTION } from "../render/Outline";
+import { PostPipeline, enableEdgeLines } from "../render/PostPipeline";
 
 export type GameState = "title" | "countdown" | "racing" | "finished";
 
@@ -28,6 +29,7 @@ export class Game {
   readonly sky: Sky;
   readonly foam: FoamSplats;
   readonly boats: Boat[] = [];
+  private post!: PostPipeline;
   player!: Boat;
 
   state: GameState = "countdown";
@@ -62,6 +64,9 @@ export class Game {
     // player boat (AI boats arrive in milestone 5)
     this.player = new Boat(this.scene, Palette.liveries[0], 0, true, 0, 0, 0);
     this.boats.push(this.player);
+    enableEdgeLines(this.player.group);
+
+    this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
 
     this.chase.mode = "orbit";
     this.chase.snapBehind(this.chaseTarget());
@@ -171,7 +176,7 @@ export class Game {
 
   render(): void {
     this.foam.render(this.renderer, this.chase.camera, this.time);
-    this.renderer.render(this.scene, this.chase.camera);
+    this.post.render(this.scene, this.chase.camera);
   }
 
   private onResize(): void {
@@ -181,5 +186,6 @@ export class Game {
     this.chase.camera.aspect = w / h;
     this.chase.camera.updateProjectionMatrix();
     OUTLINE_RESOLUTION.value.set(w * this.renderer.getPixelRatio(), h * this.renderer.getPixelRatio());
+    this.post.setSize(w, h);
   }
 }

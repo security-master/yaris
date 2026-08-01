@@ -1,3 +1,8 @@
+import * as THREE from "three";
+// NPR pipeline: palette hex values ARE the final screen colors.
+// No linear-workflow conversions anywhere — what we author is what ships.
+THREE.ColorManagement.enabled = false;
+
 import { Game } from "./core/Game";
 import { installHarness } from "./core/Harness";
 

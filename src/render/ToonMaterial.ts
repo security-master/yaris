@@ -69,7 +69,6 @@ function getMatcapTexture(): THREE.CanvasTexture {
   ctx.ellipse(S * 0.32, S * 0.24, S * 0.10, S * 0.055, -0.5, 0, Math.PI * 2);
   ctx.fill();
   matcapTex = new THREE.CanvasTexture(cv);
-  matcapTex.colorSpace = THREE.SRGBColorSpace;
   matcapTex.minFilter = THREE.NearestFilter;
   matcapTex.magFilter = THREE.NearestFilter;
   return matcapTex;

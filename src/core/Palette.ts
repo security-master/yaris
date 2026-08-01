@@ -18,9 +18,9 @@ export const Palette = {
   cloudShade: 0x9cc4f2,
 
   // Water bands (deep -> crest). Hard steps between these.
-  waterDeep: 0x123f9e,
-  waterMid: 0x1e6fe0,
-  waterLight: 0x3fb7f0,
+  waterDeep: 0x0d3390,
+  waterMid: 0x1a63d8,
+  waterLight: 0x3cb2ee,
   waterCrest: 0x8feffa,
   foam: 0xf2feff,
   sparkle: 0xeafcff,

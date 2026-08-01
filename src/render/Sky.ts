@@ -196,7 +196,6 @@ function makeCloudTexture(seed: number): THREE.CanvasTexture {
   drawBlobs(-4, 0);
 
   const tex = new THREE.CanvasTexture(cv);
-  tex.colorSpace = THREE.SRGBColorSpace;
   tex.minFilter = THREE.LinearFilter;
   tex.magFilter = THREE.LinearFilter;
   return tex;
