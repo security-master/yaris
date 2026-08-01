@@ -69,6 +69,17 @@ export function installHarness(game: Game): void {
         wetness: p.wetness,
         airborne: p.airborne,
         boost: p.boostCharge,
+        racers: game.race.racers.map((r) => ({
+          name: r.boat.livery.name,
+          lap: r.lap,
+          pos: r.position,
+          progress: Math.round(r.progress * 1000) / 1000,
+          speed: Math.round(r.boat.physics.speed * 10) / 10,
+          missed: r.missedGates,
+          finished: r.finished,
+          finishTime: Math.round(r.finishTime * 10) / 10,
+          wrongWay: r.wrongWay,
+        })),
       };
     },
   };

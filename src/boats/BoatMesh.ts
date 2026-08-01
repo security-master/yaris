@@ -133,7 +133,7 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
   const hull = new THREE.Mesh(hullGeo, hullMat);
   hull.name = "hull";
   group.add(hull);
-  const transom = new THREE.Mesh(cap(hullRing(SECTIONS[SECTIONS.length - 1]).concat(deckRing(SECTIONS[SECTIONS.length - 1]).slice(1, -1).reverse()), false), trimMat);
+  const transom = new THREE.Mesh(cap(hullRing(SECTIONS[SECTIONS.length - 1]).concat(deckRing(SECTIONS[SECTIONS.length - 1]).slice(1, -1).reverse()), false), hullMat);
   transom.name = "transom";
   group.add(transom);
 

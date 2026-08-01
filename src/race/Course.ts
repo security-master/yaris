@@ -21,26 +21,29 @@ import { makeToonMaterial } from "../render/ToonMaterial";
 import { outlineHierarchy } from "../render/Outline";
 import { enableEdgeLines } from "../render/PostPipeline";
 
-const CONTROL_POINTS: [number, number][] = [
-  [0, -60], // just before start line
-  [0, 120], // main straight
-  [10, 260],
-  [70, 360], // sweeper entry
-  [190, 405], // sweeper apex
-  [305, 355], // sweeper exit
-  [365, 250],
-  [335, 155], // chicane L
-  [400, 70], // chicane R
-  [345, -45], // hairpin approach
-  [225, -105], // hairpin apex
-  [160, -25], // hairpin exit
-  [70, -75], // cross-swell entry
-  [-70, -160], // airtime zone
-  [-195, -120],
-  [-235, 0], // far turn
-  [-160, 80], // return kink
-  [-60, 40],
-];
+const COURSE_SCALE = 0.72;
+const CONTROL_POINTS: [number, number][] = (
+  [
+    [0, -60], // just before start line
+    [0, 120], // main straight
+    [10, 260],
+    [70, 360], // sweeper entry
+    [190, 405], // sweeper apex
+    [305, 355], // sweeper exit
+    [365, 250],
+    [335, 155], // chicane L
+    [400, 70], // chicane R
+    [345, -45], // hairpin approach
+    [225, -105], // hairpin apex
+    [160, -25], // hairpin exit
+    [70, -75], // cross-swell entry
+    [-70, -160], // airtime zone
+    [-195, -120],
+    [-235, 0], // far turn
+    [-160, 80], // return kink
+    [-60, 40],
+  ] as [number, number][]
+).map(([x, z]) => [x * COURSE_SCALE, z * COURSE_SCALE] as [number, number]);
 
 export const GATE_COUNT = 10;
 
@@ -48,9 +51,13 @@ export class Course {
   readonly curve: THREE.CatmullRomCurve3;
   readonly length: number;
   readonly gates: THREE.Group[] = [];
-  /** arc-length parameter (0..1) of each gate along the curve */
+  /** START-RELATIVE arc params (0..1) of each gate along the lap */
   readonly gateParams: number[] = [];
-  readonly startParam = 0.0;
+  /**
+   * Absolute curve param where the start/finish line sits — a little way
+   * onto the main straight so the grid launches clean, not into a corner.
+   */
+  readonly startParam = 0.025;
   private ribbonMat: THREE.ShaderMaterial;
   private gateBobPhase: number[] = [];
 
@@ -148,11 +155,11 @@ export class Course {
           float arrow = step(0.62, chev) * step(chev, 0.85);
           // soft edge fade + hard core
           float edgeBand = 1.0 - step(0.92, lane);
-          float alpha = (0.16 + arrow * 0.5) * edgeBand;
+          float alpha = (0.30 + arrow * 0.62) * edgeBand;
           // pulse so the line reads as energy, not paint
           alpha *= 0.85 + 0.15 * sin(uTime * 2.4);
-          alpha *= 1.0 - smoothstep(180.0, 320.0, vDist);
-          vec3 col = mix(uColor, vec3(1.0), arrow * 0.35);
+          alpha *= 1.0 - smoothstep(220.0, 380.0, vDist);
+          vec3 col = mix(uColor, vec3(1.0), arrow * 0.45);
           gl_FragColor = vec4(col, alpha);
         }
       `,
@@ -166,8 +173,9 @@ export class Course {
     // Checkpoint gates
     // ------------------------------------------------------------------
     for (let g = 0; g < GATE_COUNT; g++) {
-      const t = g / GATE_COUNT;
-      this.gateParams.push(t);
+      const rel = g / GATE_COUNT;
+      this.gateParams.push(rel);
+      const t = this.absParam(rel);
       const gate = this.buildGate(g === 0);
       const pos = this.curve.getPointAt(t);
       const tangent = this.curve.getTangentAt(t);
@@ -265,15 +273,49 @@ export class Course {
     }
   }
 
-  /** closest arc-length param near a previous estimate (local search) */
-  projectParam(x: number, z: number, prevT: number): number {
-    let best = prevT;
+  /** start-relative param -> absolute curve param */
+  absParam(rel: number): number {
+    const t = rel + this.startParam;
+    return t - Math.floor(t);
+  }
+
+  private _projP = new THREE.Vector3();
+
+  /**
+   * Closest START-RELATIVE arc param near a previous estimate.
+   * Fixed-center coarse-to-fine sweep (never walks off to a false minimum).
+   */
+  projectParamRel(x: number, z: number, prevRel: number): number {
+    const p = this._projP;
+    let center = this.absParam(prevRel);
+    let best = center;
     let bestD = Infinity;
-    const p = new THREE.Vector3();
-    // coarse-to-fine local search around the previous param
-    for (let radius = 0.02, step = 0.002; radius >= 0.005; radius /= 2, step /= 2) {
+    let radius = 0.03;
+    let step = 0.003;
+    // coarse pass, re-centred while the minimum sits on the window edge
+    for (let hop = 0; hop < 6; hop++) {
       for (let dt = -radius; dt <= radius; dt += step) {
-        let t = best + dt;
+        let t = center + dt;
+        t -= Math.floor(t);
+        this.curve.getPointAt(t, p);
+        const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z);
+        if (d < bestD) {
+          bestD = d;
+          best = t;
+        }
+      }
+      let edgeDist = Math.abs(best - center);
+      if (edgeDist > 0.5) edgeDist = 1 - edgeDist;
+      if (edgeDist < radius - step * 1.5) break;
+      center = best;
+    }
+    // two refinement passes
+    for (let pass = 0; pass < 2; pass++) {
+      center = best;
+      radius = step;
+      step = radius / 5;
+      for (let dt = -radius; dt <= radius; dt += step) {
+        let t = center + dt;
         t -= Math.floor(t);
         this.curve.getPointAt(t, p);
         const d = (p.x - x) * (p.x - x) + (p.z - z) * (p.z - z);
@@ -283,6 +325,17 @@ export class Course {
         }
       }
     }
-    return best - Math.floor(best);
+    let rel = best - this.startParam;
+    rel -= Math.floor(rel);
+    return rel;
+  }
+
+  /** world position on the racing line for a start-relative param */
+  pointAtRel(rel: number, out: THREE.Vector3): THREE.Vector3 {
+    return this.curve.getPointAt(this.absParam(rel), out);
+  }
+
+  tangentAtRel(rel: number, out: THREE.Vector3): THREE.Vector3 {
+    return this.curve.getTangentAt(this.absParam(rel), out) as THREE.Vector3;
   }
 }

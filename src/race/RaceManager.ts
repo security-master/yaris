@@ -47,7 +47,7 @@ export class RaceManager {
     const p = boat.physics.position;
     const state: RacerState = {
       boat,
-      param: this.course.projectParam(p.x, p.z, 0),
+      param: this.course.projectParamRel(p.x, p.z, 0),
       progress: 0,
       lap: 1,
       nextGate: 0,
@@ -88,7 +88,7 @@ export class RaceManager {
         continue;
       }
       const pos = r.boat.physics.position;
-      const newParam = this.course.projectParam(pos.x, pos.z, r.param);
+      const newParam = this.course.projectParamRel(pos.x, pos.z, r.param);
       let delta = newParam - r.param;
       if (delta > 0.5) delta -= 1;
       if (delta < -0.5) delta += 1;
@@ -120,7 +120,7 @@ export class RaceManager {
       if (ahead > 0.5) ahead -= 1;
       // just crossed the gate's param line going forward
       if (ahead < 0 && ahead > -0.06 && delta > 0) {
-        this.course.curve.getPointAt(gateT, this._gatePos);
+        this.course.pointAtRel(gateT, this._gatePos);
         const d = Math.hypot(this._gatePos.x - pos.x, this._gatePos.z - pos.z);
         if (d <= GATE_CAPTURE_RADIUS) {
           r.gateFlash = 0.8;
@@ -154,13 +154,17 @@ export class RaceManager {
    * Corner preview for the HUD: signed curvature a short distance ahead.
    * Negative = left turn, positive = right turn, magnitude 0..1.
    */
+  private _ta = new THREE.Vector3();
+  private _tb = new THREE.Vector3();
+  private _tc = new THREE.Vector3();
+
   cornerPreview(r: RacerState): number {
     const t0 = r.param;
     const t1 = (t0 + 90 / this.course.length) % 1;
     const t2 = (t0 + 170 / this.course.length) % 1;
-    const a = this.course.curve.getTangentAt(t0);
-    const b = this.course.curve.getTangentAt(t1);
-    const c = this.course.curve.getTangentAt(t2);
+    const a = this.course.tangentAtRel(t0, this._ta);
+    const b = this.course.tangentAtRel(t1, this._tb);
+    const c = this.course.tangentAtRel(t2, this._tc);
     const cross1 = a.x * b.z - a.z * b.x;
     const cross2 = b.x * c.z - b.z * c.x;
     const turn = (cross1 + cross2) * -1.6;

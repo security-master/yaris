@@ -135,6 +135,23 @@ const SCENARIOS = {
       H.step(0.02);
     });
   },
+  "ai-race-60s": async (h) => {
+    await h((H) => {
+      H.setState("racing");
+      H.step(60);
+      // frame the lead AI boat
+      const info = H.getInfo();
+      const bp = info.playerPos;
+      H.setCamera(bp.x + 8, bp.y + 4, bp.z + 10, bp.x, bp.y, bp.z);
+      H.step(0.02);
+    });
+  },
+  "ai-race-180s": async (h) => {
+    await h((H) => {
+      H.setState("racing");
+      H.step(180);
+    });
+  },
   "results": async (h) => {
     await h((H) => {
       H.setState("finished");

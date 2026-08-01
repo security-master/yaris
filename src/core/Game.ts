@@ -12,6 +12,7 @@ import { Boat } from "../boats/Boat";
 import { FoamSplats } from "../water/FoamSplats";
 import { Course } from "../race/Course";
 import { RaceManager } from "../race/RaceManager";
+import { AIController, AI_PERSONALITIES } from "../ai/AIController";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
 import { OUTLINE_RESOLUTION } from "../render/Outline";
@@ -33,6 +34,7 @@ export class Game {
   readonly boats: Boat[] = [];
   readonly course: Course;
   readonly race: RaceManager;
+  readonly ais: AIController[] = [];
   private post!: PostPipeline;
   player!: Boat;
 
@@ -71,9 +73,9 @@ export class Game {
     // grid: staggered pairs behind the start line (player in front row)
     const gridSlots = [8, 14, 20, 26]; // metres behind the line
     const lateral = [3.2, -3.2, 3.2, -3.2];
-    for (let i = 0; i < 1; i++) {
+    for (let i = 0; i < 4; i++) {
       const back = gridSlots[i] / this.course.length;
-      const t = (1 + this.course.startParam - back) % 1;
+      const t = this.course.absParam(1 - back);
       const p = this.course.curve.getPointAt(t);
       const tan = this.course.curve.getTangentAt(t);
       const yaw = Math.atan2(tan.x, tan.z);
@@ -91,6 +93,9 @@ export class Game {
       this.boats.push(boat);
       enableEdgeLines(boat.group);
       this.race.addBoat(boat);
+      if (i > 0) {
+        this.ais.push(new AIController(boat, AI_PERSONALITIES[i - 1], i));
+      }
     }
     this.player = this.boats[0];
 
@@ -176,6 +181,7 @@ export class Game {
         pc.brake = this.input.brake;
         pc.steer = this.input.steer;
         pc.drift = this.input.drift;
+        this.updateAI(dt);
         this.race.update(dt);
         if (this.race.playerFinished) {
           this.state = "finished";
@@ -183,7 +189,14 @@ export class Game {
         }
         break;
       }
-      case "finished":
+      case "finished": {
+        // player coasts; AI keep racing in the background of the results cam
+        this.player.physics.controls.throttle = 0;
+        this.player.physics.controls.drift = false;
+        this.updateAI(dt);
+        this.race.update(dt);
+        break;
+      }
       case "title":
         this.player.physics.controls.throttle = 0;
         this.player.physics.controls.drift = false;
@@ -197,6 +210,67 @@ export class Game {
         b.wake.update(dt, this.time, b.physics, this.foam);
         if (b.physics.slam && b.isPlayer) {
           this.chase.addShake(b.physics.slam.strength * 0.8);
+        }
+      }
+      this.resolveBoatCollisions();
+    }
+  }
+
+  private updateAI(dt: number): void {
+    const playerState = this.race.racers[0] ?? null;
+    for (let i = 0; i < this.ais.length; i++) {
+      const ai = this.ais[i];
+      const state = this.race.racers[i + 1];
+      ai.update(dt, this.course, this.race, state, this.boats.map((b) => b), playerState);
+    }
+  }
+
+  private static _sep = new THREE.Vector3();
+  /** simple sphere-sphere pushes between boats, with a bit of bounce */
+  private resolveBoatCollisions(): void {
+    const R = 1.9; // effective boat radius
+    for (let i = 0; i < this.boats.length; i++) {
+      for (let j = i + 1; j < this.boats.length; j++) {
+        const a = this.boats[i].physics;
+        const b = this.boats[j].physics;
+        const dx = b.position.x - a.position.x;
+        const dz = b.position.z - a.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > R * 2 || d < 1e-4) continue;
+        const nx = dx / d;
+        const nz = dz / d;
+        const overlap = R * 2 - d;
+        a.position.x -= nx * overlap * 0.5;
+        a.position.z -= nz * overlap * 0.5;
+        b.position.x += nx * overlap * 0.5;
+        b.position.z += nz * overlap * 0.5;
+        // exchange a portion of the closing velocity along the normal
+        const rvx = b.velocity.x - a.velocity.x;
+        const rvz = b.velocity.z - a.velocity.z;
+        const closing = rvx * nx + rvz * nz;
+        if (closing < 0) {
+          const impulse = -closing * 0.65;
+          a.velocity.x -= nx * impulse * 0.5;
+          a.velocity.z -= nz * impulse * 0.5;
+          b.velocity.x += nx * impulse * 0.5;
+          b.velocity.z += nz * impulse * 0.5;
+          const hard = Math.min(1, -closing / 8);
+          if ((this.boats[i].isPlayer || this.boats[j].isPlayer) && hard > 0.15) {
+            this.chase.addShake(hard * 0.5);
+          }
+          // splash where they banged together
+          this.foam.spawn(
+            {
+              x: (a.position.x + b.position.x) / 2,
+              z: (a.position.z + b.position.z) / 2,
+              life: 1.0,
+              size0: 3,
+              growth: 4 * hard,
+              intensity: 0.6 + hard * 0.5,
+              fadeIn: 0.001,
+            },
+            this.time
+          );
         }
       }
     }

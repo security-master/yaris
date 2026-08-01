@@ -76,6 +76,8 @@ export class BoatPhysics {
   boostCharge = 0; // 0..1, earned by drifting
   boostTime = 0; // seconds of boost remaining
   driftActive = false;
+  /** external thrust multiplier (AI rubber-banding), ~0.91..1.13 */
+  thrustMul = 1;
 
   /** set by step() when the hull slams down; consumed by Game */
   slam: SlamEvent | null = null;
@@ -168,7 +170,8 @@ export class BoatPhysics {
     // ------------------------------------------------------------------
     this.driftActive = c.drift && Math.abs(this.speed) > 8 && this.wetness > 0;
     const steerGain = (0.55 + speedT * 1.15) * (this.driftActive ? 1.75 : 1);
-    const targetYawVel = -c.steer * steerGain * (this.speed >= 0 ? 1 : -1);
+    // steer +1 = right: yaw increases (atan2(x, z) convention)
+    const targetYawVel = c.steer * steerGain * (this.speed >= 0 ? 1 : -1);
     const yawResponse = this.wetness > 0 ? 7.5 : 1.6; // little authority in the air
     this.yawVel += (targetYawVel - this.yawVel) * Math.min(1, dt * yawResponse);
     this.yaw += this.yawVel * dt * Math.min(1, Math.abs(this.speed) / 6 + 0.15);
@@ -191,7 +194,7 @@ export class BoatPhysics {
     let vl = this.velocity.dot(_right);
 
     const waterFactor = this.wetness > 0 ? 0.45 + 0.55 * this.wetness : 0;
-    vf += c.throttle * THRUST * waterFactor * dt;
+    vf += c.throttle * THRUST * this.thrustMul * waterFactor * dt;
     if (this.boostTime > 0) vf += BOOST_THRUST * waterFactor * dt;
     // brake / reverse
     vf -= c.brake * (vf > 0.5 ? 14 : 4.5) * waterFactor * dt;
