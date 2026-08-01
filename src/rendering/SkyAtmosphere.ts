@@ -7,9 +7,9 @@ import { Palette } from '../palette';
 const skyVert = /* glsl */ `
 varying vec3 vDir;
 void main() {
-  // Anchor in the shader so the dome cannot lag behind chase/bow cameras.
-  vec4 world = vec4(cameraPosition + position, 1.0);
+  // Dome is parented at the camera in JS — do NOT also add cameraPosition here.
   vDir = normalize(position);
+  vec4 world = modelMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * viewMatrix * world;
   gl_Position.z = gl_Position.w; // push to far plane
 }
@@ -111,18 +111,18 @@ void main() {
   float halo = (1.0 - smoothstep(0.04, 0.32, sr)) * 0.34;
   col += vec3(1.0, 0.9, 0.43) * (disc * 1.6 + ring * 0.85 + diamond * 0.32 + crossFlare * 0.78 + halo * step(0.82, sun));
 
-  // Cel clouds drifting
-  vec2 cp = dir.xz / max(dir.y, 0.15);
-  cp = cp * vec2(0.82, 0.52) + vec2(uTime * 0.018, 0.35);
-  float blob = max(max(cloudBlob(cp), cloudBlob(cp * 0.58 + vec2(3.2, -1.7))), horizonClouds(dir));
-  float aa = 0.018;
-  float fill = smoothstep(-aa, aa, blob);
-  float rim = smoothstep(-0.11 - aa, -0.11 + aa, blob) * (1.0 - smoothstep(-aa, aa, blob));
-  float underside = 1.0 - smoothstep(-0.18, 0.28, fract(cp.y * 0.5) - 0.25);
-  float cloudFade = smoothstep(-0.65, -0.2, dir.y) * (1.0 - smoothstep(0.78, 0.95, dir.y));
-  vec3 cloudCol = mix(uCloudLit, uCloudShade, underside * 0.34);
-  cloudCol = mix(cloudCol, uCloudRim, rim * 0.75);
-  col = mix(col, cloudCol, (fill * 0.88 + rim * 0.7) * cloudFade);
+  // Cel clouds — denser horizon banks + mid-sky blobs with hard rims
+  vec2 cp = dir.xz / max(abs(dir.y), 0.12);
+  cp = cp * vec2(0.55, 0.4) + vec2(uTime * 0.02, 0.2);
+  float blob = max(max(cloudBlob(cp), cloudBlob(cp * 0.45 + vec2(2.4, -1.1))), horizonClouds(dir));
+  float aa = 0.02;
+  float fill = step(0.0, blob);
+  float rim = step(-0.12, blob) * (1.0 - fill);
+  float underside = step(0.35, hash12(floor(cp * 3.0)));
+  float cloudFade = step(-0.05, dir.y) * (1.0 - step(0.92, dir.y));
+  vec3 cloudCol = mix(uCloudLit, uCloudShade, underside * 0.45);
+  cloudCol = mix(cloudCol, uCloudRim, rim);
+  col = mix(col, cloudCol, (fill * 0.92 + rim * 0.85) * cloudFade);
 
   gl_FragColor = vec4(col, 1.0);
 }
