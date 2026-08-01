@@ -39,11 +39,11 @@ export class ChaseCam {
     this.camera.updateProjectionMatrix();
 
     if (this.mode === 'orbit') {
-      this.orbitAngle += dt * 0.35;
-      const r = 18;
+      this.orbitAngle += Math.min(dt, 0.05) * 0.35;
+      const r = 22;
       this.camera.position.set(
         target.x + Math.cos(this.orbitAngle) * r,
-        target.y + 7,
+        target.y + 10,
         target.z + Math.sin(this.orbitAngle) * r,
       );
       this.camera.lookAt(target.x, target.y + 1.2, target.z);
@@ -82,12 +82,18 @@ export class ChaseCam {
     const ax = (desired.x - this.pos.x) * stiffness - this.vel.x * damping;
     const ay = (desired.y - this.pos.y) * stiffness - this.vel.y * damping;
     const az = (desired.z - this.pos.z) * stiffness - this.vel.z * damping;
-    this.vel.x += ax * dt;
-    this.vel.y += ay * dt;
-    this.vel.z += az * dt;
-    this.pos.x += this.vel.x * dt;
-    this.pos.y += this.vel.y * dt;
-    this.pos.z += this.vel.z * dt;
+    const step = Math.min(dt, 0.05);
+    this.vel.x += ax * step;
+    this.vel.y += ay * step;
+    this.vel.z += az * step;
+    this.pos.x += this.vel.x * step;
+    this.pos.y += this.vel.y * step;
+    this.pos.z += this.vel.z * step;
+    // Recover if spring ever blew up (e.g. harness time seek)
+    if (!Number.isFinite(this.pos.x) || this.pos.distanceTo(desired) > 80) {
+      this.pos.copy(desired);
+      this.vel.set(0, 0, 0);
+    }
 
     const lookDesired = new THREE.Vector3(
       target.x + fx * 8,

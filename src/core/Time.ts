@@ -18,8 +18,11 @@ export class Time {
       return 0;
     }
     if (this.forcedElapsed !== null) {
-      this.delta = Math.max(0, this.forcedElapsed - this.elapsed);
+      // Harness time seeks must NOT dump multi-second deltas into physics/springs.
+      const jump = this.forcedElapsed - this.elapsed;
       this.elapsed = this.forcedElapsed;
+      this.delta = jump > 0.05 || jump < 0 ? 1 / 60 : Math.max(0, jump);
+      this.accumulator = 0;
       return this.delta;
     }
     this.delta = dt;

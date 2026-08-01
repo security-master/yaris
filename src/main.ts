@@ -22,7 +22,10 @@ export interface CelRacerAPI {
 const api: CelRacerAPI = {
   ready: true,
   setTime: (t: number) => {
+    game.time.elapsed = t;
     game.time.forcedElapsed = t;
+    game.time.accumulator = 0;
+    game.time.delta = 1 / 60;
   },
   setCamera: (mode) => game.setCameraMode(mode),
   seekRace: (phase) => game.seekRace(phase),
