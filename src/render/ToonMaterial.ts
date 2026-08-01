@@ -163,11 +163,16 @@ export function makeToonMaterial(opts: ToonOptions): THREE.ShaderMaterial {
         float band = texture2D(uRamp, vec2(ndl, 0.5)).r;
         vec3 col = mix(uShadow, uColor, band);
 
+        // undersides snap to one uniform shadow band: without this, hull
+        // bottoms seen bow-up shatter into a fan of per-triangle bands
+        float downMask = 1.0 - smoothstep(-0.45, -0.12, N.y);
+        col = mix(col, uShadow, downMask * 0.9);
+
         // ---- banded specular: two hard steps ----
         vec3 H = normalize(L + V);
         float s = pow(max(dot(N, H), 0.0), uShiny);
         float specBand = step(0.55, s) + step(0.18, s) * 0.35;
-        col += vec3(1.0, 0.98, 0.9) * specBand * uSpec * 0.5;
+        col += vec3(1.0, 0.98, 0.9) * specBand * uSpec * 0.5 * (1.0 - downMask);
 
         // ---- matcap fake reflection, quantized ----
         if (uMatcapAmt > 0.001) {

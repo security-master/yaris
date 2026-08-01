@@ -255,12 +255,19 @@ export class HUD {
     this.inkText(String(Math.round(kmh)), cx, cy + 12, 54, PAPER, "center");
     this.inkText("km/h", cx, cy + 38, 18, hex(Palette.skyHorizon), "center");
 
-    // boost meter
+    // boost meter (skewed chip attached below the dial)
     const bx = cx - 80;
-    const by = cy + 62;
+    const by = cy + 66;
     c.save();
     c.transform(1, 0, -0.25, 1, 0, 0);
-    c.fillStyle = "rgba(16,26,56,0.72)";
+    c.fillStyle = "rgba(16, 26, 56, 0.82)";
+    c.beginPath();
+    c.roundRect(bx - 46, by - 8, 232, 30, 8);
+    c.fill();
+    c.strokeStyle = PAPER;
+    c.lineWidth = 2;
+    c.stroke();
+    c.fillStyle = "rgba(10, 16, 38, 0.9)";
     c.fillRect(bx + 18, by, 160, 14);
     const charge = phys.boostTime > 0 ? 1 : phys.boostCharge;
     const flash = charge >= 1 || phys.boostTime > 0 ? Math.sin(this.game.time * 14) * 0.25 + 0.75 : 1;
@@ -268,7 +275,7 @@ export class HUD {
     c.globalAlpha = flash;
     c.fillRect(bx + 20, by + 2, 156 * Math.min(1, charge), 10);
     c.restore();
-    this.inkText("BOOST", bx - 40, by + 12, 15, PAPER, "left");
+    this.inkText("BOOST", bx - 62, by + 13, 15, PAPER, "left", false);
   }
 
   private drawLapCard(W: number, H: number): void {
@@ -420,7 +427,7 @@ export class HUD {
       const isP = r.boat.isPlayer;
       c.save();
       c.transform(1, 0, -0.12, 1, 0, 0);
-      c.fillStyle = isP ? "rgba(255, 122, 56, 0.25)" : "rgba(16,26,56,0.7)";
+      c.fillStyle = isP ? "rgba(120, 58, 24, 0.9)" : "rgba(16, 26, 56, 0.88)";
       c.strokeStyle = isP ? hex(Palette.orange) : PAPER;
       c.lineWidth = 2.5;
       c.beginPath();
@@ -440,13 +447,17 @@ export class HUD {
       c.fill();
       c.stroke();
       this.inkText(r.boat.livery.name + (isP ? "  (YOU)" : ""), x0 + 136, rowY, 26, PAPER);
-      // finished racers show their time; the rest show a live gap estimate
+      // winner shows the total; everyone else shows a gap (live estimate
+      // with one decimal until they actually cross the line)
+      const winner = sorted[0];
       let timeLabel: string;
-      if (r.finished) {
-        timeLabel = fmtTime(r.finishTime);
+      if (r.position === 1) {
+        timeLabel = fmtTime(r.finished ? r.finishTime : this.game.race.raceTime);
+      } else if (r.finished && winner.finished) {
+        timeLabel = `+${(r.finishTime - winner.finishTime).toFixed(1)}s`;
       } else {
         const remaining = Math.max(0, (TOTAL_LAPS - r.progress) * this.game.course.length);
-        timeLabel = `+${Math.max(1, Math.round(remaining / 19))}s`;
+        timeLabel = `+${Math.max(0.1, remaining / 19).toFixed(1)}s`;
       }
       this.inkText(timeLabel, x0 + cw - 30, rowY, 24, hex(Palette.skyHorizon), "right");
       y += 72;

@@ -58,14 +58,19 @@ export class ChaseCamera {
     const cam = this.camera;
 
     if (this.mode === "orbit" || this.mode === "finish") {
-      // cinematic orbit around the boat
+      // cinematic orbit; centre sits a little behind the boat so the start
+      // gate ahead stays scenery instead of blocking the lens
       this.orbitAngle += dt * (this.mode === "orbit" ? 0.22 : 0.16);
-      const r = this.mode === "orbit" ? 15 : 17;
-      const h = this.mode === "orbit" ? 5.2 : 6.0;
+      const r = this.mode === "orbit" ? 14.5 : 17;
+      const h = this.mode === "orbit" ? 8.2 : 6.4;
+      _fwd.set(0, 0, 1).applyQuaternion(target.quaternion);
+      _fwd.y = 0;
+      _fwd.normalize();
+      const backOff = this.mode === "orbit" ? 7 : 0;
       _desired.set(
-        target.position.x + Math.cos(this.orbitAngle) * r,
+        target.position.x - _fwd.x * backOff + Math.cos(this.orbitAngle) * r,
         target.position.y + h,
-        target.position.z + Math.sin(this.orbitAngle) * r
+        target.position.z - _fwd.z * backOff + Math.sin(this.orbitAngle) * r
       );
       this.pos.lerp(_desired, Math.min(1, dt * 2.2));
       this.lookAt.copy(target.position).add(new THREE.Vector3(0, 1.2, 0));
@@ -117,7 +122,7 @@ export class ChaseCamera {
       const dx = this.pos.x - ob.x;
       const dz = this.pos.z - ob.y;
       const d2 = dx * dx + dz * dz;
-      const minR = 3.4;
+      const minR = this.mode === "chase" ? 3.4 : 6.0;
       if (d2 < minR * minR && d2 > 1e-6) {
         const d = Math.sqrt(d2);
         const push = (minR - d) / d;

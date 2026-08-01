@@ -46,7 +46,7 @@ export class Spray {
           // as flung splash streaks rather than bubbles
           vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
           float scale = length(vec3(instanceMatrix[0].x, instanceMatrix[0].y, instanceMatrix[0].z));
-          mvPos.xy += (uv - 0.5) * vec2(scale * 0.62, scale * 1.35);
+          mvPos.xy += (uv - 0.5) * vec2(scale * 0.85, scale * 1.1);
           gl_Position = projectionMatrix * mvPos;
         }
       `,
@@ -93,7 +93,7 @@ export class Spray {
       p.vx = vel.x + (Math.random() - 0.5) * spread;
       p.vy = vel.y + Math.random() * spread * 0.9;
       p.vz = vel.z + (Math.random() - 0.5) * spread;
-      p.size = sizeBase * (0.6 + Math.random() * 0.8);
+      p.size = sizeBase * (0.4 + Math.random() * 1.1);
     }
   }
 

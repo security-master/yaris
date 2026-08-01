@@ -168,6 +168,9 @@ export class Course {
           // pulse so the line reads as energy, not paint
           alpha *= 0.85 + 0.15 * sin(uTime * 2.4);
           alpha *= 1.0 - smoothstep(220.0, 380.0, vDist);
+          // near-camera fade: an edge-on ribbon right at the lens would
+          // otherwise smear a huge translucent green sheet across the frame
+          alpha *= smoothstep(9.0, 22.0, vDist);
           // fade out under/around each boat
           for (int i = 0; i < 4; i++) {
             float bd = length(vWorld - uBoats[i]);
@@ -220,9 +223,9 @@ export class Course {
     const capMat = makeToonMaterial({ color: Palette.white, specular: 0.3, rim: 0.5 });
     const barMat = makeToonMaterial({
       color: isStart ? Palette.yellow : Palette.raceGreen,
-      emissive: 0.85,
+      emissive: 0.55, // partial: keeps a shaded underside so the bar has form
       specular: 0,
-      rim: 0.2,
+      rim: 0.25,
     });
 
     for (const sx of [-HALF, HALF]) {
@@ -236,8 +239,8 @@ export class Course {
       ball.position.set(sx, 5.1, 0);
       group.add(ball);
     }
-    // glowing crossbar
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(HALF * 2 - 0.8, 0.42, 0.28), barMat);
+    // glowing crossbar (ends stop short of the pylon caps)
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(HALF * 2 - 2.0, 0.42, 0.28), barMat);
     bar.position.set(0, 5.1, 0);
     group.add(bar);
 

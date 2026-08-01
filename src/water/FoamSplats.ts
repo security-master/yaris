@@ -242,6 +242,7 @@ export class BoatWakeEmitter {
   private lastZ = 0;
   private initialized = false;
   private ringTimer = 0;
+  private idleTimer = 0;
 
   update(dt: number, time: number, phys: BoatPhysics, foam: FoamSplats): void {
     const speed = Math.abs(phys.speed);
@@ -307,6 +308,26 @@ export class BoatWakeEmitter {
     } else if (dist > spacing) {
       this.lastX = pos.x;
       this.lastZ = pos.z;
+    }
+
+    // at rest: slow concentric ripple rings so the boat sits IN the water
+    if (speed < 3 && phys.wetness > 0) {
+      this.idleTimer -= dt;
+      if (this.idleTimer <= 0) {
+        this.idleTimer = 1.1;
+        foam.spawn(
+          {
+            x: pos.x,
+            z: pos.z,
+            life: 1.6,
+            size0: 3.0,
+            growth: 2.2,
+            intensity: 0.34,
+            fadeIn: 0.001,
+          },
+          time
+        );
+      }
     }
 
     // bow spray: the hull cutting the water throws small splats out to the sides
