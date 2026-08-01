@@ -53,6 +53,8 @@ export class Course {
   readonly gates: THREE.Group[] = [];
   /** START-RELATIVE arc params (0..1) of each gate along the lap */
   readonly gateParams: number[] = [];
+  /** world xz of every gate pylon (camera obstacle avoidance) */
+  readonly pylons: THREE.Vector2[] = [];
   /**
    * Absolute curve param where the start/finish line sits — a little way
    * onto the main straight so the grid launches clean, not into a corner.
@@ -141,7 +143,7 @@ export class Course {
             q += base.xz - (q + d.xz);
           }
           vec3 disp = gerstner(q, uTime, 1.0, nrm);
-          vec3 wp = vec3(base.x, disp.y + 0.14, base.z);
+          vec3 wp = vec3(base.x, disp.y + 0.2, base.z);
           vWorld = wp.xz;
           vec4 mv = viewMatrix * vec4(wp, 1.0);
           vDist = -mv.z;
@@ -162,7 +164,7 @@ export class Course {
           float arrow = step(0.62, chev) * step(chev, 0.85);
           // soft edge fade + hard core
           float edgeBand = 1.0 - step(0.92, lane);
-          float alpha = (0.30 + arrow * 0.62) * edgeBand;
+          float alpha = (0.38 + arrow * 0.55) * edgeBand;
           // pulse so the line reads as energy, not paint
           alpha *= 0.85 + 0.15 * sin(uTime * 2.4);
           alpha *= 1.0 - smoothstep(220.0, 380.0, vDist);
@@ -199,6 +201,13 @@ export class Course {
       this.gates.push(gate);
       this.gateBobPhase.push(g * 1.7);
       scene.add(gate);
+
+      // record pylon obstacle positions
+      const c = Math.cos(gate.rotation.y);
+      const s = Math.sin(gate.rotation.y);
+      for (const sx of [-7.5, 7.5]) {
+        this.pylons.push(new THREE.Vector2(pos.x + c * sx, pos.z - s * sx));
+      }
     }
   }
 

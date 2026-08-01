@@ -45,8 +45,9 @@ export class FoamSplats {
   private dummy = new THREE.Object3D();
 
   constructor() {
+    // R = foam intensity, G = hull contact shadow
     this.rt = new THREE.WebGLRenderTarget(RT_RES, RT_RES, {
-      format: THREE.RedFormat,
+      format: THREE.RGBAFormat,
       type: THREE.UnsignedByteType,
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -108,6 +109,65 @@ export class FoamSplats {
     for (let i = 0; i < MAX_SPLATS; i++) {
       this.splats.push({ x: 0, z: 0, yaw: 0, born: -100, life: 1, size0: 1, growth: 0, stretch: 1, intensity: 0, fadeIn: 0.05 });
     }
+
+    // ---- hull contact shadows: one elongated soft stamp per boat (G) ----
+    const shGeo = new THREE.PlaneGeometry(1, 1);
+    shGeo.rotateX(-Math.PI / 2);
+    const shMat = new THREE.ShaderMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+      vertexShader: /* glsl */ `
+        attribute float aFade;
+        varying vec2 vUvL;
+        varying float vFade;
+        void main() {
+          vUvL = uv;
+          vFade = aFade;
+          gl_Position = projectionMatrix * modelViewMatrix * instanceMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        varying vec2 vUvL;
+        varying float vFade;
+        void main() {
+          vec2 p = vUvL - 0.5;
+          float r2 = dot(p, p) * 4.0;
+          float fall = pow(max(0.0, 1.0 - r2), 1.2);
+          gl_FragColor = vec4(0.0, fall * vFade, 0.0, fall * vFade);
+        }
+      `,
+    });
+    this.shadowMesh = new THREE.InstancedMesh(shGeo, shMat, 4);
+    this.shadowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.shadowMesh.frustumCulled = false;
+    const shFades = new Float32Array(4);
+    this.shadowFade = new THREE.InstancedBufferAttribute(shFades, 1);
+    this.shadowFade.setUsage(THREE.DynamicDrawUsage);
+    shGeo.setAttribute("aFade", this.shadowFade);
+    this.splatScene.add(this.shadowMesh);
+  }
+
+  private shadowMesh!: THREE.InstancedMesh;
+  private shadowFade!: THREE.InstancedBufferAttribute;
+
+  /** stamp this frame's hull shadows (call before render) */
+  updateShadows(boats: { x: number; z: number; yaw: number; intensity: number }[]): void {
+    let count = 0;
+    for (const b of boats) {
+      if (b.intensity <= 0.01) continue;
+      this.dummy.position.set(b.x, 0, b.z);
+      this.dummy.rotation.set(0, b.yaw, 0);
+      this.dummy.scale.set(4.2, 1, 6.4);
+      this.dummy.updateMatrix();
+      this.shadowMesh.setMatrixAt(count, this.dummy.matrix);
+      this.shadowFade.setX(count, b.intensity);
+      count++;
+    }
+    this.shadowMesh.count = count;
+    this.shadowMesh.instanceMatrix.needsUpdate = true;
+    this.shadowFade.needsUpdate = true;
   }
 
   spawn(s: Partial<Splat> & { x: number; z: number }, time: number): void {

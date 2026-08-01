@@ -63,16 +63,13 @@ export class Sky {
           float sunDot = dot(d, normalize(uSunDir));
           float ang = acos(clamp(sunDot, -1.0, 1.0));
 
-          // hard-edged core disc
-          float core = 1.0 - smoothstep(0.030, 0.034, ang);
-          // crisp halo ring
-          float ring = (1.0 - smoothstep(0.052, 0.056, ang)) * smoothstep(0.042, 0.046, ang);
-          // second, thinner outer ring for a printed-poster feel
-          float ring2 = (1.0 - smoothstep(0.085, 0.088, ang)) * smoothstep(0.079, 0.082, ang);
-          // faint warm wash close to the sun (single subtle band, not photo bloom)
-          float glow = (1.0 - smoothstep(0.05, 0.30, ang)) * 0.16;
+          // big flat anime sun disc with a hard edge
+          float core = 1.0 - smoothstep(0.052, 0.056, ang);
+          // one painted halo band hugging the disc
+          float halo = (1.0 - smoothstep(0.078, 0.082, ang)) * smoothstep(0.060, 0.064, ang);
+          // no bloom wash: the sun stays a clean graphic mark
 
-          // diamond flare spikes, tapering to points
+          // four chunky diamond flare points hugging the disc
           vec3 up = abs(uSunDir.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
           vec3 sx = normalize(cross(up, uSunDir));
           vec3 sy = cross(uSunDir, sx);
@@ -82,12 +79,13 @@ export class Sky {
             vec2 a = abs(pl);
             float cross4 = min(a.x, a.y);
             float reach = max(a.x, a.y);
-            float taper = pow(max(0.0, 1.0 - reach / 0.19), 1.6);
-            spike = step(cross4, 0.0034 * taper) * step(0.036, ang) * step(ang, 0.3);
+            // fat triangular points that taper fast: start at the disc edge
+            float taper = pow(max(0.0, 1.0 - (reach - 0.045) / 0.085), 1.3);
+            spike = step(cross4, 0.016 * taper) * step(0.05, reach) * step(reach, 0.13);
           }
 
-          col = mix(col, uSunHalo, clamp(glow + ring + ring2 * 0.8, 0.0, 1.0));
-          col = mix(col, uSunCore, clamp(core + spike * 0.85, 0.0, 1.0));
+          col = mix(col, uSunHalo, halo);
+          col = mix(col, uSunCore, clamp(core + spike, 0.0, 1.0));
 
           gl_FragColor = vec4(col, 1.0);
         }

@@ -72,6 +72,8 @@ export class Game {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // accumulate stats across the whole frame (foam RT + prepass + composer)
+    this.renderer.info.autoReset = false;
     container.appendChild(this.renderer.domElement);
 
     this.scene = new THREE.Scene();
@@ -102,6 +104,7 @@ export class Game {
     this.player = this.boats[0];
     this.spray = new Spray(this.scene);
     this.buoys = new Buoys(this.scene, this.course);
+    this.chase.obstacles = this.course.pylons;
 
     this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
     this.hud = new HUD(this);
@@ -134,7 +137,9 @@ export class Game {
     const t = this.course.absParam(1 - back);
     const p = this.course.curve.getPointAt(t);
     const tan = this.course.curve.getTangentAt(t);
-    const yaw = Math.atan2(tan.x, tan.z);
+    // every boat lines up facing down the start straight (clean grid read)
+    const tanStart = this.course.curve.getTangentAt(this.course.startParam);
+    const yaw = Math.atan2(tanStart.x, tanStart.z);
     return { x: p.x - tan.z * lateral[i], z: p.z + tan.x * lateral[i], yaw };
   }
 
@@ -371,6 +376,15 @@ export class Game {
   }
 
   render(): void {
+    this.renderer.info.reset();
+    this.foam.updateShadows(
+      this.boats.map((b) => ({
+        x: b.physics.position.x,
+        z: b.physics.position.z,
+        yaw: b.physics.yaw,
+        intensity: Math.min(1, b.physics.wetness + 0.25),
+      }))
+    );
     this.foam.render(this.renderer, this.chase.camera, this.time);
     this.post.render(this.scene, this.chase.camera);
   }

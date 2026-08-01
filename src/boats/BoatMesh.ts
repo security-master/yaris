@@ -7,6 +7,7 @@
  */
 
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { makeToonMaterial } from "../render/ToonMaterial";
 import { Palette } from "../core/Palette";
 
@@ -123,7 +124,7 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
   const group = new THREE.Group();
   group.name = "boat";
 
-  const hullMat = makeToonMaterial({ color: livery.hull, specular: 0.75, shininess: 90, rim: 0.7, matcap: 0.1 });
+  const hullMat = makeToonMaterial({ color: livery.hull, specular: 0.75, shininess: 90, rim: 0.7, matcap: 0.05 });
   const deckMat = makeToonMaterial({ color: livery.deck, specular: 0.35, shininess: 50, rim: 0.5 });
   const trimMat = makeToonMaterial({ color: livery.trim, specular: 0.5, shininess: 70, rim: 0.4 });
   const glassMat = makeToonMaterial({ color: 0x9fd8f5, specular: 1.0, shininess: 160, rim: 0.9, matcap: 0.55 });
@@ -150,10 +151,10 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
   group.add(tub);
 
   // windshield: swept wedge in front of the cockpit
-  const shieldGeo = new THREE.CylinderGeometry(0.42, 0.5, 0.34, 12, 1, true, Math.PI * 0.62, Math.PI * 0.76);
+  const shieldGeo = new THREE.CylinderGeometry(0.42, 0.5, 0.26, 12, 1, true, Math.PI * 0.62, Math.PI * 0.76);
   const shield = new THREE.Mesh(shieldGeo, glassMat);
-  shield.position.set(0, 1.0, 0.28);
-  shield.rotation.x = -0.38;
+  shield.position.set(0, 0.97, 0.3);
+  shield.rotation.x = -0.52;
   shield.scale.z = 0.75;
   shield.name = "windshield";
   shield.userData.doubleSided = true;
@@ -177,16 +178,24 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
     group.add(pipe);
   }
 
-  // spoiler wing on struts
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.34), hullMat);
-  wing.position.set(0, 1.28, -1.95);
-  wing.rotation.x = 0.12;
+  // spoiler: thin swept aerofoil on two raked struts, with endplates
+  const wing = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.045, 0.3), trimMat);
+  wing.position.set(0, 1.22, -1.95);
+  wing.rotation.x = 0.16;
+  wing.scale.z = 1;
   wing.name = "wing";
   group.add(wing);
-  for (const sx of [-0.6, 0.6]) {
-    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.5, 0.16), trimMat);
-    strut.position.set(sx, 1.02, -1.92);
-    strut.rotation.x = 0.18;
+  for (const sx of [-0.68, 0.68]) {
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.16, 0.34), hullMat);
+    plate.position.set(sx, 1.24, -1.95);
+    plate.rotation.x = 0.16;
+    plate.name = "endplate";
+    group.add(plate);
+  }
+  for (const sx of [-0.42, 0.42]) {
+    const strut = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.46, 0.12), trimMat);
+    strut.position.set(sx, 1.0, -1.9);
+    strut.rotation.x = 0.3;
     strut.name = "strut";
     group.add(strut);
   }
@@ -227,6 +236,35 @@ export function buildBoatMesh(livery: Livery): BoatMeshResult {
     grip.position.set(sx, 1.16, 0.12);
     grip.name = "grip";
     group.add(grip);
+  }
+
+  // ------------------------------------------------------------------
+  // Draw-call pass: merge every static part that shares a material into
+  // a single mesh (hull set, deck set, trim set...). Cuts each boat from
+  // ~20 meshes (+20 outline shells) down to ~5 (+5).
+  // ------------------------------------------------------------------
+  const byMaterial = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const toRemove: THREE.Mesh[] = [];
+  for (const child of [...group.children]) {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) continue;
+    mesh.updateMatrix();
+    const g = mesh.geometry.clone().applyMatrix4(mesh.matrix);
+    // drop UVs; the toon shader doesn't use them and merge needs
+    // identical attribute sets
+    g.deleteAttribute("uv");
+    const mat = mesh.material as THREE.Material;
+    let list = byMaterial.get(mat);
+    if (!list) byMaterial.set(mat, (list = []));
+    list.push(g);
+    toRemove.push(mesh);
+  }
+  for (const m of toRemove) group.remove(m);
+  for (const [mat, geos] of byMaterial) {
+    const merged = mergeGeometries(geos, false);
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.name = "boat_part";
+    group.add(mesh);
   }
 
   const seatAnchor = new THREE.Object3D();

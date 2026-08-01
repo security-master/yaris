@@ -24,6 +24,8 @@ const _look = new THREE.Vector3();
 export class ChaseCamera {
   readonly camera: THREE.PerspectiveCamera;
   mode: CameraMode = "orbit";
+  /** static obstacles (gate pylons) the camera must not clip through */
+  obstacles: THREE.Vector2[] = [];
 
   private vel = new THREE.Vector3();
   private pos = new THREE.Vector3(0, 8, 20);
@@ -108,6 +110,20 @@ export class ChaseCamera {
       // FOV kick with speed
       const targetFov = this.baseFov + speedT * speedT * 16;
       cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 3.5);
+    }
+
+    // push the camera out of gate pylons (radius ~1.4m + margin)
+    for (const ob of this.obstacles) {
+      const dx = this.pos.x - ob.x;
+      const dz = this.pos.z - ob.y;
+      const d2 = dx * dx + dz * dz;
+      const minR = 3.4;
+      if (d2 < minR * minR && d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        const push = (minR - d) / d;
+        this.pos.x += dx * push;
+        this.pos.z += dz * push;
+      }
     }
 
     // screenshake: decaying band-limited jitter

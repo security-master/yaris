@@ -17,11 +17,11 @@ import * as THREE from "three";
 import { glslWaveChunk } from "./waves";
 import { Palette } from "../core/Palette";
 
-const GRID_SIZE = 640; // metres covered by the displaced grid
+const GRID_SIZE = 700; // metres covered by the displaced grid
 const GRID_SEGS = 400; // segments per side
 const CELL = GRID_SIZE / GRID_SEGS;
-const FADE_START = 210.0;
-const FADE_END = 300.0;
+const FADE_START = 235.0;
+const FADE_END = 330.0;
 const HORIZON_RADIUS = 9000;
 
 function c3(hex: number): THREE.Color {
@@ -158,7 +158,10 @@ export class Ocean {
           // Noise on the threshold keeps the band edge organic instead of
           // tracing hard polygonal contours across the mesh.
           float fres = 1.0 - clamp(dot(N, V), 0.0, 1.0);
-          col = mix(col, uLight, step(0.72 + bandNoise * 0.28, fres) * 0.65);
+          // suppressed near the camera: at close range the band edge would
+          // trace straight polygon contours across the foreground
+          float fresBand = step(0.72 + bandNoise * 0.28, fres) * smoothstep(20.0, 48.0, dist);
+          col = mix(col, uLight, fresBand * 0.65);
 
           // --------------------------------------------------------------
           // 2. Crest foam: appears above a height threshold, broken up by
@@ -175,16 +178,23 @@ export class Ocean {
           // +u = world +x, +v = world -z (see FoamSplats ortho basis)
           vec2 fUv = vec2(vWorldPos.x - uFoamCenter.x, uFoamCenter.y - vWorldPos.z) / uFoamSize + 0.5;
           float splat = 0.0;
+          float hullShadow = 0.0;
           if (fUv.x > 0.001 && fUv.x < 0.999 && fUv.y > 0.001 && fUv.y < 0.999) {
             float edge = smoothstep(0.0, 0.06, fUv.x) * smoothstep(1.0, 0.94, fUv.x)
                        * smoothstep(0.0, 0.06, fUv.y) * smoothstep(1.0, 0.94, fUv.y);
-            splat = texture2D(uFoamMap, fUv).r * edge * 1.65;
+            vec2 fm = texture2D(uFoamMap, fUv).rg;
+            splat = fm.r * edge * 1.65;
+            hullShadow = fm.g * edge;
           }
           // quantize splat foam into two hard levels: bright core + fringe
           float splatFoam = step(0.46, splat + foamNoise * 0.24);
           float splatFringe = step(0.18, splat + foamNoise * 0.16) * 0.5;
 
           float foam = max(crestFoam, splatFoam);
+          // hull contact shadow: darken + cool the water under boats
+          // (quantized to two levels so it stays cel)
+          float shadowBand = step(0.25, hullShadow) * 0.14 + step(0.55, hullShadow) * 0.10;
+          col = mix(col, uDeep * 0.55, shadowBand * (1.0 - foam));
           col = mix(col, uFoamColor, max(foam, splatFringe));
 
           // --------------------------------------------------------------

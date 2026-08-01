@@ -30,13 +30,18 @@ export class Buoys {
 
     let lastPlaced = -10;
     for (let i = 0; i < N; i++) {
+      // keep the start straight clear of buoys (grid + gate live there)
+      let rel = i / N - course.startParam;
+      rel -= Math.floor(rel);
+      if (rel > 0.955 || rel < 0.05) continue;
+
       const a = tans[i];
       const b = tans[(i + 4) % N];
       // signed curvature over ~30 m
       const cross = a.x * b.z - a.z * b.x;
-      if (Math.abs(cross) < 0.14) continue;
+      if (Math.abs(cross) < 0.19) continue;
       const distSinceLast = ((i - lastPlaced + N) % N) * (course.length / N);
-      if (distSinceLast < 34) continue;
+      if (distSinceLast < 52) continue;
       lastPlaced = i;
 
       // outside of the corner: opposite the turn direction

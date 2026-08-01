@@ -167,9 +167,17 @@ export class HUD {
       this.inkText(String(n), 0, 0, 150, n === 1 ? hex(Palette.orange) : PAPER, "center");
       c.restore();
     }
-    this.inkText("INKWAKE GP", W / 2, H * 0.14, 46, hex(Palette.yellow), "center");
-    this.inkText("3 LAPS — FOLLOW THE GREEN LINE", W / 2, H * 0.19, 20, PAPER, "center");
-    this.inkText("↑ throttle   ← → steer   SPACE drift & boost", W / 2, H * 0.9, 20, PAPER, "center");
+    this.inkText("INKWAKE GP", W / 2, H * 0.115, 46, hex(Palette.yellow), "center");
+    this.inkText("3 LAPS — FOLLOW THE GREEN LINE", W / 2, H * 0.165, 20, PAPER, "center");
+    // controls chip: dark backing so it reads over clouds and foam
+    const c = this.ctx;
+    c.save();
+    c.fillStyle = "rgba(16, 26, 56, 0.72)";
+    c.beginPath();
+    c.roundRect(W / 2 - 280, H * 0.86, 560, 42, 12);
+    c.fill();
+    c.restore();
+    this.inkText("↑ throttle    ← → steer    SPACE drift & boost", W / 2, H * 0.86 + 29, 20, PAPER, "center", false);
   }
 
   /** anime speed lines rushing in from the screen edges at high speed */
@@ -216,6 +224,17 @@ export class HUD {
     const cx = W - 130;
     const cy = H - 96;
 
+    // opaque dial face so the gauge never reads as a hole in the HUD
+    c.save();
+    c.fillStyle = "rgba(16, 26, 56, 0.82)";
+    c.beginPath();
+    c.arc(cx, cy, 88, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = PAPER;
+    c.lineWidth = 3;
+    c.stroke();
+    c.restore();
+
     // arc gauge
     const speedT = Math.min(1, kmh / 130);
     c.save();
@@ -259,7 +278,9 @@ export class HUD {
     this.inkText(fmtTime(this.game.race.raceTime), 38, 88, 24, hex(Palette.yellow));
     const last = r.lapTimes[r.lapTimes.length - 1];
     if (last !== undefined) {
-      this.inkText(`LAST ${fmtTime(last)}`, 150, 88, 15, hex(Palette.skyHorizon));
+      this.inkText(`LAST ${fmtTime(last)}`, 132, 82, 14, hex(Palette.skyHorizon));
+      const best = Math.min(...r.lapTimes);
+      this.inkText(`BEST ${fmtTime(best)}`, 132, 100, 14, hex(Palette.teal));
     }
   }
 
@@ -312,6 +333,14 @@ export class HUD {
       c.stroke();
     }
 
+    // gate ticks
+    c.fillStyle = hex(Palette.orange);
+    for (const gt of this.game.course.gateParams) {
+      const gp = this.game.course.curve.getPointAt(this.game.course.absParam(gt));
+      const gq = px(gp.x, gp.z);
+      c.fillRect(gq.x - 2.5, gq.y - 2.5, 5, 5);
+    }
+
     // start line tick
     const s0 = this.game.course.curve.getPointAt(this.game.course.absParam(0));
     const q0 = px(s0.x, s0.z);
@@ -344,6 +373,12 @@ export class HUD {
     const cx = W / 2 + dir * 130;
     const cy = H * 0.2;
     c.save();
+    // backing chip anchors the chevrons as HUD, not floating debug marks
+    c.globalAlpha = 0.4 + mag * 0.3;
+    c.fillStyle = "rgba(16, 26, 56, 0.85)";
+    c.beginPath();
+    c.roundRect(cx - 48 - (dir > 0 ? 0 : 22), cy - 28, 118, 56, 12);
+    c.fill();
     c.globalAlpha = 0.5 + mag * 0.5;
     // chevrons pointing into the corner
     for (let i = 0; i < 3; i++) {
@@ -366,7 +401,13 @@ export class HUD {
 
   private drawResults(W: number, H: number): void {
     const c = this.ctx;
-    c.fillStyle = "rgba(10, 16, 38, 0.6)";
+    // cool blue wash + vignette: podium mood without collapsing the palette
+    c.fillStyle = "rgba(20, 34, 74, 0.42)";
+    c.fillRect(0, 0, W, H);
+    const vg = c.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 0.95);
+    vg.addColorStop(0, "rgba(10, 16, 38, 0)");
+    vg.addColorStop(1, "rgba(10, 16, 38, 0.55)");
+    c.fillStyle = vg;
     c.fillRect(0, 0, W, H);
 
     this.inkText("RACE COMPLETE", W / 2, H * 0.18, 54, hex(Palette.yellow), "center");
@@ -399,7 +440,15 @@ export class HUD {
       c.fill();
       c.stroke();
       this.inkText(r.boat.livery.name + (isP ? "  (YOU)" : ""), x0 + 136, rowY, 26, PAPER);
-      this.inkText(r.finished ? fmtTime(r.finishTime) : "RACING…", x0 + cw - 30, rowY, 24, hex(Palette.skyHorizon), "right");
+      // finished racers show their time; the rest show a live gap estimate
+      let timeLabel: string;
+      if (r.finished) {
+        timeLabel = fmtTime(r.finishTime);
+      } else {
+        const remaining = Math.max(0, (TOTAL_LAPS - r.progress) * this.game.course.length);
+        timeLabel = `+${Math.max(1, Math.round(remaining / 19))}s`;
+      }
+      this.inkText(timeLabel, x0 + cw - 30, rowY, 24, hex(Palette.skyHorizon), "right");
       y += 72;
     }
 

@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { Palette } from "../core/Palette";
 
 const MAX = 320;
-const G = 16;
+const G = 22;
 
 interface P {
   born: number;
@@ -42,10 +42,11 @@ export class Spray {
         varying vec2 vUv;
         void main() {
           vUv = uv;
-          // camera-facing billboard: expand in view space
+          // camera-facing billboard, stretched vertically so droplets read
+          // as flung splash streaks rather than bubbles
           vec4 mvPos = modelViewMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0);
           float scale = length(vec3(instanceMatrix[0].x, instanceMatrix[0].y, instanceMatrix[0].z));
-          mvPos.xy += (uv - 0.5) * scale;
+          mvPos.xy += (uv - 0.5) * vec2(scale * 0.62, scale * 1.35);
           gl_Position = projectionMatrix * mvPos;
         }
       `,
@@ -57,9 +58,8 @@ export class Spray {
           vec2 p = vUv - 0.5;
           float r2 = dot(p, p) * 4.0;
           if (r2 > 1.0) discard;
-          // hard white core with a thin ink rim = inked droplet
-          vec3 col = mix(uColor, uInk, step(0.72, r2));
-          gl_FragColor = vec4(col, 1.0);
+          // solid white splash chip — flat, graphic, no bubble ring
+          gl_FragColor = vec4(uColor, 1.0);
         }
       `,
     });
@@ -86,7 +86,7 @@ export class Spray {
       const p = this.pool[this.head];
       this.head = (this.head + 1) % MAX;
       p.born = time;
-      p.life = 0.45 + Math.random() * 0.5;
+      p.life = 0.3 + Math.random() * 0.32;
       p.x = pos.x + (Math.random() - 0.5) * 0.6;
       p.y = pos.y + Math.random() * 0.3;
       p.z = pos.z + (Math.random() - 0.5) * 0.6;
@@ -109,9 +109,9 @@ export class Spray {
       const z = p.z + p.vz * age;
       if (y < -1.5) continue;
       // quantized size steps: pop in, hold, shrink in chunks
-      const sizeStep = t01 < 0.15 ? 0.7 : t01 < 0.7 ? 1.0 : 0.55;
+      const sizeStep = t01 < 0.15 ? 0.7 : t01 < 0.7 ? 1.0 : 0.45;
       this.dummy.position.set(x, y, z);
-      this.dummy.scale.setScalar(p.size * sizeStep);
+      this.dummy.scale.setScalar(p.size * sizeStep * 0.8);
       this.dummy.updateMatrix();
       this.mesh.setMatrixAt(count, this.dummy.matrix);
       count++;
