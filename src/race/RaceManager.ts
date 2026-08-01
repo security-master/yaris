@@ -40,7 +40,7 @@ export class RaceManager {
 
   startCountdown(): void {
     this.phase = 'countdown';
-    this.countdown = 3.2;
+    this.countdown = 2.99;
   }
 
   update(dt: number, progresses: number[]): void {

@@ -131,7 +131,7 @@ export class HUD {
     // Overlay countdown / results
     this.overlay.innerHTML = '';
     if (opts.phase === 'countdown') {
-      const n = Math.ceil(opts.countdown);
+      const n = opts.countdown > 0 ? Math.min(3, Math.max(1, Math.ceil(opts.countdown))) : 0;
       const label = n > 0 ? String(n) : 'GO';
       this.overlay.innerHTML = `<div style="
         font-family: Syne, sans-serif;

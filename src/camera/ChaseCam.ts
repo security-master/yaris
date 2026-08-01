@@ -57,19 +57,23 @@ export class ChaseCam {
     if (this.mode === 'bow') {
       const fx = Math.cos(yaw);
       const fz = Math.sin(yaw);
-      this.camera.position.set(target.x + fx * 2.5, target.y + 1.4, target.z + fz * 2.5);
-      this.camera.lookAt(target.x + fx * 10, target.y + 1, target.z + fz * 10);
+      this.camera.position.set(
+        target.x - fx * 3.5,
+        target.y + 3.2,
+        target.z - fz * 3.5,
+      );
+      this.camera.lookAt(target.x + fx * 12, target.y + 1.2, target.z + fz * 12);
       return;
     }
 
-    // Chase
-    const back = 11 + speedNorm * 3;
-    const height = 4.2 + speedNorm * 0.8;
+    // Chase — stay well above water surface; never sit inside the wave mesh
+    const back = 14 + speedNorm * 4;
+    const height = 6.5 + speedNorm * 1.2;
     const fx = Math.cos(yaw);
     const fz = Math.sin(yaw);
     const desired = new THREE.Vector3(
       target.x - fx * back,
-      target.y + height,
+      Math.max(target.y + height, target.y + 5.5),
       target.z - fz * back,
     );
     // Spring-damper
@@ -107,9 +111,9 @@ export class ChaseCam {
   snapBehind(target: THREE.Vector3, yaw: number): void {
     const fx = Math.cos(yaw);
     const fz = Math.sin(yaw);
-    this.pos.set(target.x - fx * 12, target.y + 5, target.z - fz * 12);
+    this.pos.set(target.x - fx * 16, target.y + 7.5, target.z - fz * 16);
     this.vel.set(0, 0, 0);
-    this.look.set(target.x, target.y + 1, target.z);
+    this.look.set(target.x + fx * 6, target.y + 1.5, target.z + fz * 6);
     this.camera.position.copy(this.pos);
     this.camera.lookAt(this.look);
   }

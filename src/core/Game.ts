@@ -6,6 +6,7 @@ import { Input } from './Input';
 import { Time } from './Time';
 import { WaterSystem } from '../water/WaterSystem';
 import { FoamWake } from '../water/FoamWake';
+import { sampleGerstner } from '../water/gerstner';
 import { SkyAtmosphere } from '../rendering/SkyAtmosphere';
 import { PostPipeline } from '../rendering/PostPipeline';
 import { Boat } from '../boats/Boat';
@@ -161,22 +162,27 @@ export class Game {
       this.race.phase = 'racing';
       this.race.countdown = 0;
       this.cam.mode = 'chase';
-      // Push racers along track
+      // Push racers along track, seated on the live wave field
+      const t = this.time.elapsed;
       for (let i = 0; i < this.boats.length; i++) {
         const u = 0.22 + i * 0.03;
         const frame = getTrackFrame(this.curve, u);
         const lane = (i - 1.5) * 2.5;
         const right = new THREE.Vector3(-frame.tangent.z, 0, frame.tangent.x);
         const pos = frame.position.clone().addScaledVector(right, lane);
+        const wave = sampleGerstner(pos.x, pos.z, t);
         this.boats[i].spawn(pos.x, pos.z, frame.yaw);
+        this.boats[i].physics.state.position.y = wave.height + 0.4;
         this.boats[i].physics.state.speed = 24;
         this.boats[i].physics.state.velocity.set(
           Math.cos(frame.yaw) * 24,
           0,
           Math.sin(frame.yaw) * 24,
         );
+        this.boats[i].updateVisual(0, t, 0.8);
         this.ais[i]?.setProgress(u);
       }
+      this.cam.mode = 'chase';
       this.cam.snapBehind(this.boats[0].physics.state.position, this.boats[0].physics.state.yaw);
     } else {
       this.seekRace('midlap');
