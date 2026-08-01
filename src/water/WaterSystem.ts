@@ -77,9 +77,9 @@ void main() {
   col *= shade;
   col = mix(col, uShallow, step(0.70, ndl) * step(-0.20, h) * 0.08);
 
-  // Crest foam — hard white only at narrow, lit wave tips.
-  float crestFoam = step(0.86, vCrest) * step(1.05, h) * step(0.36, ndl);
-  col = mix(col, uFoam, crestFoam * 0.9);
+  // Crest foam — hard white tips; threshold tuned by eye against screenshots.
+  float crestFoam = step(0.72, vCrest) * step(0.55, h) * step(0.28, ndl);
+  col = mix(col, uFoam, crestFoam * 0.88);
 
   // Fresnel rim (banded)
   float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
