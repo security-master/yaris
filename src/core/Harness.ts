@@ -15,6 +15,8 @@ export interface HarnessAPI {
   key(code: string, down: boolean): void;
   /** free camera override: position + lookAt in world space */
   setCamera(px: number, py: number, pz: number, lx: number, ly: number, lz: number): void;
+  /** let an AI drive the player boat */
+  autopilot(on: boolean): void;
   /** release camera override, return to game camera */
   clearCamera(): void;
   setState(name: string): void;
@@ -54,6 +56,9 @@ export function installHarness(game: Game): void {
     },
     setState(name: string) {
       game.forceState(name as Game["state"]);
+    },
+    autopilot(on: boolean) {
+      game.autopilot = on;
     },
     getInfo() {
       const p = game.player.physics;

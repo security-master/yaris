@@ -12,9 +12,12 @@ import { Boat } from "../boats/Boat";
 import { FoamSplats } from "../water/FoamSplats";
 import { Course } from "../race/Course";
 import { RaceManager } from "../race/RaceManager";
+import { Buoys } from "../race/Buoys";
 import { AIController, AI_PERSONALITIES } from "../ai/AIController";
 import { HUD } from "../ui/HUD";
 import { AudioEngine } from "../audio/AudioEngine";
+import { Spray, BoatSprayEmitter } from "../water/Spray";
+import { Quality } from "./Quality";
 import { Palette } from "./Palette";
 import { setToonSun } from "../render/ToonMaterial";
 import { OUTLINE_RESOLUTION } from "../render/Outline";
@@ -39,6 +42,10 @@ export class Game {
   readonly ais: AIController[] = [];
   readonly hud: HUD;
   readonly audio: AudioEngine;
+  readonly spray: Spray;
+  readonly buoys: Buoys;
+  private sprayEmitters: BoatSprayEmitter[] = [];
+  private quality: Quality | null = null;
   private post!: PostPipeline;
   private lastCountdownBeep = 99;
   private prevGateFlash = 0;
@@ -47,6 +54,9 @@ export class Game {
 
   state: GameState = "countdown";
   countdown = COUNTDOWN_TIME;
+  /** harness: let an AI drive the player boat (full-race soak tests) */
+  autopilot = false;
+  private autopilotAI: AIController | null = null;
   /** simulation time (drives waves, physics, animation) */
   time = 0;
   private accumulator = 0;
@@ -84,11 +94,14 @@ export class Game {
       this.boats.push(boat);
       enableEdgeLines(boat.group);
       this.race.addBoat(boat);
+      this.sprayEmitters.push(new BoatSprayEmitter());
       if (i > 0) {
         this.ais.push(new AIController(boat, AI_PERSONALITIES[i - 1], i));
       }
     }
     this.player = this.boats[0];
+    this.spray = new Spray(this.scene);
+    this.buoys = new Buoys(this.scene, this.course);
 
     this.post = new PostPipeline(this.renderer, this.scene, this.chase.camera);
     this.hud = new HUD(this);
@@ -104,8 +117,14 @@ export class Game {
     window.addEventListener("resize", () => this.onResize());
 
     if (!this.harnessMode) {
+      this.quality = new Quality((pr) => this.applyPixelRatio(pr));
       this.renderer.setAnimationLoop((t) => this.frame(t));
     }
+  }
+
+  private applyPixelRatio(pr: number): void {
+    this.renderer.setPixelRatio(pr);
+    this.onResize();
   }
 
   private gridSlot(i: number): { x: number; z: number; yaw: number } {
@@ -146,9 +165,10 @@ export class Game {
   private lastT = -1;
   private frame(tMs: number): void {
     if (this.lastT < 0) this.lastT = tMs;
-    let dt = (tMs - this.lastT) / 1000;
+    const rawDt = tMs - this.lastT;
     this.lastT = tMs;
-    dt = Math.min(dt, 0.1);
+    const dt = Math.min(rawDt / 1000, 0.1);
+    this.quality?.frame(rawDt);
     this.advance(dt);
     this.render();
   }
@@ -202,11 +222,18 @@ export class Game {
         break;
       }
       case "racing": {
-        const pc = this.player.physics.controls;
-        pc.throttle = this.input.throttle;
-        pc.brake = this.input.brake;
-        pc.steer = this.input.steer;
-        pc.drift = this.input.drift;
+        if (this.autopilot) {
+          if (!this.autopilotAI) {
+            this.autopilotAI = new AIController(this.player, { name: "AUTO", skill: 0.95, aggression: 0.8, erratic: 0.05, lineBias: 0 }, 99);
+          }
+          this.autopilotAI.update(dt, this.course, this.race, this.race.racers[0], this.boats, null);
+        } else {
+          const pc = this.player.physics.controls;
+          pc.throttle = this.input.throttle;
+          pc.brake = this.input.brake;
+          pc.steer = this.input.steer;
+          pc.drift = this.input.drift;
+        }
         this.updateAI(dt);
         this.race.update(dt);
         if (this.race.playerFinished) {
@@ -232,9 +259,11 @@ export class Game {
 
     // physics for all boats (frozen during countdown so the grid holds)
     if (this.state !== "countdown") {
-      for (const b of this.boats) {
+      for (let i = 0; i < this.boats.length; i++) {
+        const b = this.boats[i];
         b.physics.step(dt, this.time);
         b.wake.update(dt, this.time, b.physics, this.foam);
+        this.sprayEmitters[i].update(dt, this.time, b.physics, this.spray);
         if (b.physics.slam && b.isPlayer) {
           this.chase.addShake(b.physics.slam.strength * 0.8);
           this.audio.slam(b.physics.slam.strength);
@@ -326,6 +355,8 @@ export class Game {
     this.sky.update(this.time, this.chase.camera);
     this.course.setBoatPositions(this.boats.map((b) => b.physics.position));
     this.course.update(this.time, this.chase.camera);
+    this.buoys.update(this.time, this.chase.camera);
+    this.spray.update(this.time);
     this.hud.update(dt);
 
     const pb = this.player.physics;

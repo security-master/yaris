@@ -129,6 +129,7 @@ export class HUD {
       c.restore();
     }
 
+    this.drawSpeedLines(W, H);
     this.drawSpeedo(W, H);
     this.drawLapCard(W, H);
     this.drawPositionCard(W, H);
@@ -169,6 +170,43 @@ export class HUD {
     this.inkText("INKWAKE GP", W / 2, H * 0.14, 46, hex(Palette.yellow), "center");
     this.inkText("3 LAPS — FOLLOW THE GREEN LINE", W / 2, H * 0.19, 20, PAPER, "center");
     this.inkText("↑ throttle   ← → steer   SPACE drift & boost", W / 2, H * 0.9, 20, PAPER, "center");
+  }
+
+  /** anime speed lines rushing in from the screen edges at high speed */
+  private drawSpeedLines(W: number, H: number): void {
+    const phys = this.game.player.physics;
+    const speedT = Math.min(1, Math.abs(phys.speed) / 33);
+    const boost = phys.boostTime > 0;
+    const intensity = boost ? 1 : Math.max(0, (speedT - 0.78) / 0.22);
+    if (intensity <= 0.01) return;
+
+    const c = this.ctx;
+    const cx = W / 2;
+    const cy = H * 0.45;
+    const t = this.game.time;
+    c.save();
+    c.globalAlpha = 0.5 * intensity;
+    c.strokeStyle = boost ? hex(Palette.teal) : PAPER;
+    c.lineCap = "round";
+    for (let i = 0; i < 18; i++) {
+      // deterministic per-line jitter, scrolling phase
+      const seed = i * 137.5;
+      const ang = (seed % 360) * (Math.PI / 180);
+      const wob = Math.sin(t * 9 + i * 1.7) * 0.02;
+      const dx = Math.cos(ang + wob);
+      const dy = Math.sin(ang + wob) * 0.72;
+      const edge = Math.max(W, H) * 0.72;
+      const phase = (t * 5.5 + i * 0.61) % 1;
+      const r0 = edge * (0.94 - phase * 0.16);
+      const r1 = r0 - (34 + intensity * 60) * (0.4 + phase);
+      if (Math.abs(dy) > 0.6) continue; // keep the vertical band clear
+      c.lineWidth = 3.5 + (i % 3);
+      c.beginPath();
+      c.moveTo(cx + dx * r0, cy + dy * r0);
+      c.lineTo(cx + dx * r1, cy + dy * r1);
+      c.stroke();
+    }
+    c.restore();
   }
 
   private drawSpeedo(W: number, H: number): void {
