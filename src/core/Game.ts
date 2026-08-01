@@ -8,11 +8,16 @@ import { Ocean } from "../water/Ocean";
 import { Sky } from "../render/Sky";
 import { Input } from "./Input";
 import { ChaseCamera } from "../camera/ChaseCamera";
-import { getWaterHeight } from "../water/waves";
+import { Boat } from "../boats/Boat";
+import { FoamSplats } from "../water/FoamSplats";
+import { Palette } from "./Palette";
+import { setToonSun } from "../render/ToonMaterial";
+import { OUTLINE_RESOLUTION } from "../render/Outline";
 
 export type GameState = "title" | "countdown" | "racing" | "finished";
 
 const FIXED_DT = 1 / 120;
+const COUNTDOWN_TIME = 3.6;
 
 export class Game {
   readonly renderer: THREE.WebGLRenderer;
@@ -21,19 +26,16 @@ export class Game {
   readonly chase: ChaseCamera;
   readonly ocean: Ocean;
   readonly sky: Sky;
+  readonly foam: FoamSplats;
+  readonly boats: Boat[] = [];
+  player!: Boat;
 
-  state: GameState = "title";
+  state: GameState = "countdown";
+  countdown = COUNTDOWN_TIME;
   /** simulation time (drives waves, physics, animation) */
   time = 0;
   private accumulator = 0;
   private harnessMode: boolean;
-
-  // temporary M1 target: a point bobbing on the swell
-  private dummyTarget = {
-    position: new THREE.Vector3(0, 0, 0),
-    quaternion: new THREE.Quaternion(),
-    speed: 0,
-  };
 
   constructor(container: HTMLElement, harnessMode = false) {
     this.harnessMode = harnessMode;
@@ -53,12 +55,35 @@ export class Game {
     this.ocean = new Ocean(this.scene);
     this.sky = new Sky(this.scene);
     this.ocean.sunDir.copy(this.sky.sunDir);
+    setToonSun(this.sky.sunDir);
+    this.foam = new FoamSplats();
+    this.ocean.setFoamMap(this.foam.texture, this.foam.center, this.foam.size);
 
+    // player boat (AI boats arrive in milestone 5)
+    this.player = new Boat(this.scene, Palette.liveries[0], 0, true, 0, 0, 0);
+    this.boats.push(this.player);
+
+    this.chase.mode = "orbit";
+    this.chase.snapBehind(this.chaseTarget());
+
+    OUTLINE_RESOLUTION.value.set(
+      window.innerWidth * this.renderer.getPixelRatio(),
+      window.innerHeight * this.renderer.getPixelRatio()
+    );
     window.addEventListener("resize", () => this.onResize());
 
     if (!this.harnessMode) {
       this.renderer.setAnimationLoop((t) => this.frame(t));
     }
+  }
+
+  private chaseTarget() {
+    return {
+      position: this.player.physics.position,
+      quaternion: this.player.physics.quaternion,
+      speed: this.player.physics.speed,
+      velocity: this.player.physics.velocity,
+    };
   }
 
   private lastT = -1;
@@ -81,22 +106,71 @@ export class Game {
     this.updateVisuals(dt);
   }
 
+  /** Harness hook: jump straight into a state. */
+  forceState(name: GameState): void {
+    this.state = name;
+    if (name === "racing") {
+      this.countdown = 0;
+      this.chase.mode = "chase";
+      this.chase.snapBehind(this.chaseTarget());
+    } else if (name === "countdown") {
+      this.countdown = COUNTDOWN_TIME;
+      this.chase.mode = "orbit";
+    } else if (name === "finished") {
+      this.chase.mode = "finish";
+    }
+  }
+
   private step(dt: number): void {
     this.time += dt;
     this.input.update(dt);
 
-    // M1: dummy target rides the swell so the camera has something to frame
-    const t = this.dummyTarget;
-    t.position.set(0, getWaterHeight(0, 0, this.time) + 0.5, 0);
+    switch (this.state) {
+      case "countdown": {
+        this.countdown -= dt;
+        if (this.countdown <= 0) {
+          this.state = "racing";
+          this.chase.mode = "chase";
+          this.chase.snapBehind(this.chaseTarget());
+        }
+        break;
+      }
+      case "racing": {
+        const pc = this.player.physics.controls;
+        pc.throttle = this.input.throttle;
+        pc.brake = this.input.brake;
+        pc.steer = this.input.steer;
+        pc.drift = this.input.drift;
+        break;
+      }
+      case "finished":
+      case "title":
+        this.player.physics.controls.throttle = 0;
+        this.player.physics.controls.drift = false;
+        break;
+    }
+
+    // physics for all boats (frozen during countdown so the grid holds)
+    if (this.state !== "countdown") {
+      for (const b of this.boats) {
+        b.physics.step(dt, this.time);
+        b.wake.update(dt, this.time, b.physics, this.foam);
+        if (b.physics.slam && b.isPlayer) {
+          this.chase.addShake(b.physics.slam.strength * 0.8);
+        }
+      }
+    }
   }
 
   private updateVisuals(dt: number): void {
-    this.chase.update(dt, this.time, this.dummyTarget);
+    for (const b of this.boats) b.update(dt);
+    this.chase.update(dt, this.time, this.chaseTarget());
     this.ocean.update(this.time, this.chase.camera);
     this.sky.update(this.time, this.chase.camera);
   }
 
   render(): void {
+    this.foam.render(this.renderer, this.chase.camera, this.time);
     this.renderer.render(this.scene, this.chase.camera);
   }
 
@@ -106,5 +180,6 @@ export class Game {
     this.renderer.setSize(w, h);
     this.chase.camera.aspect = w / h;
     this.chase.camera.updateProjectionMatrix();
+    OUTLINE_RESOLUTION.value.set(w * this.renderer.getPixelRatio(), h * this.renderer.getPixelRatio());
   }
 }

@@ -175,11 +175,11 @@ export class Ocean {
           if (fUv.x > 0.001 && fUv.x < 0.999 && fUv.y > 0.001 && fUv.y < 0.999) {
             float edge = smoothstep(0.0, 0.06, fUv.x) * smoothstep(1.0, 0.94, fUv.x)
                        * smoothstep(0.0, 0.06, fUv.y) * smoothstep(1.0, 0.94, fUv.y);
-            splat = texture2D(uFoamMap, fUv).r * edge;
+            splat = texture2D(uFoamMap, fUv).r * edge * 1.65;
           }
           // quantize splat foam into two hard levels: bright core + fringe
-          float splatFoam = step(0.5, splat + foamNoise * 0.22);
-          float splatFringe = step(0.22, splat + foamNoise * 0.18) * 0.45;
+          float splatFoam = step(0.46, splat + foamNoise * 0.24);
+          float splatFringe = step(0.18, splat + foamNoise * 0.16) * 0.5;
 
           float foam = max(crestFoam, splatFoam);
           col = mix(col, uFoamColor, max(foam, splatFringe));
@@ -198,12 +198,14 @@ export class Ocean {
           vec2 cell = floor(vWorldPos.xz * 1.9);
           float rnd = hash21(cell);
           float tw = fract(rnd * 7.31 + uTime * (0.35 + rnd * 0.5));
-          float sparkleOn = step(0.955, rnd) * step(0.72, tw) * step(tw, 0.92);
+          float sparkleOn = step(0.986, rnd) * step(0.68, tw) * step(tw, 0.9);
           vec2 cuv = fract(vWorldPos.xz * 1.9) - 0.5;
           float diamond = step(abs(cuv.x) + abs(cuv.y), 0.17);
           float upFace = smoothstep(0.86, 0.94, N.y);
-          float glit = sparkleOn * diamond * upFace * step(-0.2, vHeight);
-          col = mix(col, uSparkle, glit * (1.0 - foam));
+          // glitter is a near/mid-field garnish; kill it in the distance
+          float distFade = 1.0 - smoothstep(45.0, 85.0, dist);
+          float glit = sparkleOn * diamond * upFace * step(-0.2, vHeight) * distFade;
+          col = mix(col, uSparkle, glit * (1.0 - foam) * (1.0 - splatFringe) * 0.85);
 
           col = applyFog(col, dist);
           gl_FragColor = vec4(col, 1.0);

@@ -113,6 +113,17 @@ const SCENARIOS = {
       H.step(0.02);
     });
   },
+  "wake-topdown": async (h) => {
+    await h((H) => {
+      H.setState("racing");
+      H.key("ArrowUp", true);
+      H.step(5);
+      const p = H.getInfo();
+      const bp = p.playerPos ?? { x: 0, y: 0, z: 0 };
+      H.setCamera(bp.x + 2, bp.y + 38, bp.z - 12, bp.x, bp.y, bp.z - 13);
+      H.step(0.02);
+    });
+  },
   "results": async (h) => {
     await h((H) => {
       H.setState("finished");

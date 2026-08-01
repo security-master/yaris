@@ -13,6 +13,8 @@ export interface ChaseTarget {
   quaternion: THREE.Quaternion;
   /** current speed m/s (for FOV kick) */
   speed: number;
+  /** world velocity (for spring lag feed-forward) */
+  velocity: THREE.Vector3;
 }
 
 const _fwd = new THREE.Vector3();
@@ -77,14 +79,17 @@ export class ChaseCamera {
       const back = 10.2 + speedT * 2.6;
       const height = 4.3 - speedT * 0.7;
 
+      // critically-damped spring toward the desired position
+      const stiffness = 48;
+      const damping = 2 * Math.sqrt(stiffness) * 1.05;
+
       _desired
         .copy(target.position)
         .addScaledVector(_fwd, -back)
         .add(new THREE.Vector3(0, height, 0));
-
-      // critically-damped spring toward the desired position
-      const stiffness = 42;
-      const damping = 2 * Math.sqrt(stiffness) * 1.05;
+      // feed-forward: cancel the spring's steady-state lag at speed
+      _desired.x += target.velocity.x * (damping / stiffness);
+      _desired.z += target.velocity.z * (damping / stiffness);
       const ax = (_desired.x - this.pos.x) * stiffness - this.vel.x * damping;
       const ay = (_desired.y - this.pos.y) * (stiffness * 1.4) - this.vel.y * (damping * 1.2);
       const az = (_desired.z - this.pos.z) * stiffness - this.vel.z * damping;

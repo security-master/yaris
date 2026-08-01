@@ -53,14 +53,22 @@ export function installHarness(game: Game): void {
       cameraOverride = null;
     },
     setState(name: string) {
-      game.state = name as Game["state"];
+      game.forceState(name as Game["state"]);
     },
     getInfo() {
+      const p = game.player.physics;
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(p.quaternion);
       return {
         state: game.state,
         time: game.time,
         drawCalls: game.renderer.info.render.calls,
         triangles: game.renderer.info.render.triangles,
+        playerPos: { x: p.position.x, y: p.position.y, z: p.position.z },
+        playerFwd: { x: fwd.x, z: fwd.z },
+        speed: p.speed,
+        wetness: p.wetness,
+        airborne: p.airborne,
+        boost: p.boostCharge,
       };
     },
   };
